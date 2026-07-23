@@ -1,0 +1,861 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  min-height: 100%;
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #e8eaed;
+}
+/* Only <html> carries the black fallback: when both html and body specify a
+   background, body's paints as a normal block box clipped to body's own
+   content height instead of being propagated to the canvas, which sat in a
+   paint tier above #bg-layer's negative z-index and blocked it below the
+   fold whenever page content was shorter than the window. */
+html { background: #000; }
+
+#bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: #000;
+}
+
+#bg-image {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+
+main {
+  /* Exactly 4 group cards (240px) + 3 gaps (20px) + main's own padding
+     (24px each side) = 1068px, so a row fills with no leftover space. */
+  max-width: 1068px;
+  margin: 0 auto;
+  padding: 64px 24px 40px;
+}
+
+.todo-section {
+  width: 100%;
+  margin-bottom: 24px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(6px) saturate(140%);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    inset -1px 0 0 rgba(0, 0, 0, 0.3),
+    0 12px 32px rgba(0, 0, 0, 0.55);
+}
+.todo-section.hidden { display: none; }
+
+.todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.todo-item:hover { background: rgba(255, 255, 255, 0.05); }
+.todo-item.active { background: rgba(138, 180, 248, 0.12); }
+
+.todo-item input[type="checkbox"] {
+  margin-top: 3px;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: #8ab4f8;
+  cursor: pointer;
+}
+
+.todo-item-text { flex: 1; min-width: 0; }
+
+.todo-item-name {
+  font-size: 13px;
+  color: #e8eaed;
+  font-weight: 500;
+}
+.todo-item.completed .todo-item-name {
+  color: #fff;
+  text-decoration: line-through;
+}
+
+.todo-item-desc {
+  font-size: 11px;
+  color: #9aa0a6;
+  margin-top: 2px;
+}
+.todo-item.completed .todo-item-desc {
+  color: #80868b;
+  text-decoration: line-through;
+}
+
+.todo-item-meta {
+  font-size: 10px;
+  color: #80868b;
+  margin-top: 2px;
+}
+.todo-item-meta.overdue { color: #f28b82; }
+
+.todo-hint {
+  font-size: 11px;
+  color: #80868b;
+  padding: 4px 6px 0;
+}
+
+#groups-viewport {
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+}
+#groups-viewport::-webkit-scrollbar { display: none; } /* Chromium */
+
+#groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.groups-scroll-btn {
+  /* "Crystal clear": unlike the group cards, no blur/tint at all -- just a
+     beveled edge (light top, dark bottom) against whatever's behind it. */
+  display: none;
+  width: 100%;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: transparent;
+  color: #9aa0a6;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+  transition: background 0.15s, color 0.15s;
+}
+.groups-scroll-btn.visible { display: flex; }
+.groups-scroll-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8eaed;
+}
+.groups-scroll-btn:disabled {
+  color: #3c4043;
+  cursor: default;
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+#menu-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.03);
+  color: #80868b;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+#menu-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8eaed;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+}
+
+#exit-edit-mode-btn {
+  display: none; /* only shown while body.edit-mode is set */
+  position: fixed;
+  top: 16px;
+  right: 58px; /* menu-btn's 16px + 34px width + 8px gap */
+  z-index: 20;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(138, 180, 248, 0.15);
+  color: #8ab4f8;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+body.edit-mode #exit-edit-mode-btn {
+  display: flex;
+}
+#exit-edit-mode-btn:hover {
+  background: rgba(138, 180, 248, 0.28);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+}
+
+.menu-dropdown {
+  position: fixed;
+  top: 54px;
+  right: 16px;
+  z-index: 20;
+  background: rgba(32, 33, 36, 0.7);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  min-width: 180px;
+}
+.menu-dropdown.hidden { display: none; }
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #e8eaed;
+  cursor: pointer;
+}
+.menu-item:hover { background: rgba(255, 255, 255, 0.08); }
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch-track {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9px;
+  transition: background 0.15s;
+}
+.switch-track::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  top: 2px;
+  background: #e8eaed;
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+.switch input:checked + .switch-track { background: #8ab4f8; }
+.switch input:checked + .switch-track::before { transform: translateX(16px); background: #131314; }
+
+.menu-dropdown { min-width: 220px; }
+
+.menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 6px;
+}
+
+.menu-label {
+  font-size: 11px;
+  color: #80868b;
+  padding: 6px 10px 2px;
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.menu-row .modal-input { flex: 1; }
+
+.menu-opacity-row {
+  font-size: 12px;
+  color: #9aa0a6;
+}
+.menu-opacity-row span { flex-shrink: 0; }
+
+.menu-opacity-row input[type="range"] {
+  flex: 1;
+  accent-color: #8ab4f8;
+}
+
+.menu-btn-small {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8eaed;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.menu-btn-small:hover { background: rgba(255, 255, 255, 0.12); }
+
+.menu-btn-wide {
+  display: block;
+  width: calc(100% - 12px);
+  margin: 4px 6px;
+  text-align: center;
+}
+
+.bg-error {
+  font-size: 11px;
+  color: #f28b82;
+  padding: 2px 10px 6px;
+  display: none;
+}
+.bg-error.visible { display: block; }
+
+.site-list {
+  max-height: 110px;
+  overflow-y: auto;
+  margin: 2px 6px 8px;
+}
+.site-list-empty {
+  font-size: 11px;
+  color: #5f6368;
+  padding: 2px 4px;
+}
+.site-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #e8eaed;
+}
+.site-list-item:hover { background: rgba(255, 255, 255, 0.06); }
+.site-list-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.site-list-item button {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: #80868b;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+}
+.site-list-item button:hover { background: rgba(255, 255, 255, 0.12); color: #e8eaed; }
+
+#search-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 48px;
+}
+
+#search-input {
+  flex: 1;
+  height: 44px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8eaed;
+  padding: 0 20px;
+  font-size: 16px;
+  outline: none;
+  transition: background 0.2s, border-color 0.2s;
+}
+#search-input::placeholder { color: #80868b; }
+#search-input:focus {
+  border-color: #8ab4f8;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+#search-form button {
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  color: #e8eaed;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+#search-form button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+}
+
+.group {
+  width: 240px;
+  height: 283px;
+  flex: none;
+  overflow: hidden; /* hard cap: nothing inside can grow the card taller */
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(6px) saturate(140%);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  /* Beveled-glass illusion: a light top/left edge and a darker bottom/right
+     edge, as if the panel had physical thickness catching light from above. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    inset -1px 0 0 rgba(0, 0, 0, 0.3),
+    0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.group-header h2 {
+  flex: 1;
+  min-width: 0; /* lets the flex item shrink below its text's natural width so ellipsis can kick in */
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+  color: #e8eaed;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+  user-select: none;
+}
+body.edit-mode .group-header h2 {
+  cursor: text;
+}
+
+.group-title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: inherit;
+  margin: 0;
+  padding: 0 0 0 1px;
+  color: #e8eaed;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(138, 180, 248, 0.6);
+  border-radius: 4px;
+  outline: none;
+}
+
+.group-header button {
+  flex: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #80868b;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition: background 0.2s, color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.group-header button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #e8eaed;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.group-header .group-delete-btn {
+  /* No `display` here -- .edit-only/body.edit-mode control visibility.
+     Setting display unconditionally on this higher-specificity selector
+     would win over `.edit-only { display: none; }` and show it always. */
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+}
+/* Flex (not the generic .edit-only inline-block) so align/justify-center apply. */
+body.edit-mode .group-header button.group-delete-btn.edit-only {
+  display: flex;
+}
+
+.sites-viewport {
+  /* Fixed (not max-) height for exactly 2 rows, so every group card is the
+     same size whether it holds 1 site or a dozen. The extra top padding
+     gives the first row's hover-lift (translateY) room to not get clipped
+     by the viewport's own overflow boundary. */
+  height: 154px;
+  padding-top: 6px;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+}
+.sites-viewport::-webkit-scrollbar { display: none; } /* Chromium */
+
+.sites {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 8px;
+}
+
+.sites-scroll-btn {
+  /* Always reserve this box's space (visibility, not display) so a group's
+     card is the same total height whether or not it currently overflows. */
+  visibility: hidden;
+  display: flex;
+  width: 100%;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #80868b;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.sites-scroll-btn.visible { visibility: visible; }
+.sites-scroll-up { margin-bottom: 4px; }
+.sites-scroll-down { margin-top: 4px; }
+.sites-scroll-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8eaed;
+}
+.sites-scroll-btn:disabled {
+  color: #3c4043;
+  cursor: default;
+}
+
+.site-tile {
+  position: relative;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.site-avatar-wrap {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 6px;
+}
+
+.site-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.site-tile:hover .site-avatar {
+  transform: translateY(-5px) scale(1.06);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.site-avatar.has-favicon {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+.site-tile:hover .site-avatar.has-favicon {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.site-favicon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.site-name {
+  font-size: 12px;
+  color: #9aa0a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.site-tile:hover .site-name { color: #e8eaed; }
+
+.site-remove {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(60, 60, 63, 0.9);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  color: #e8eaed;
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+body.edit-mode .site-remove {
+  display: flex;
+}
+.site-remove.confirm {
+  background: #d93025;
+  color: #fff;
+}
+
+.add-site-tile {
+  width: 100%;
+  text-align: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #80868b;
+  transition: color 0.2s ease;
+}
+.add-site-tile:hover { color: #e8eaed; }
+
+.add-tile-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  margin: 0 auto 6px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.add-site-tile:hover .add-tile-avatar {
+  transform: translateY(-5px) scale(1.06);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.65);
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+#add-group-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #8ab4f8;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+#add-group-btn:hover {
+  background: rgba(138, 180, 248, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+}
+
+.empty-state {
+  color: #80868b;
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+
+.edit-only { display: none; }
+body.edit-mode .group-header button.edit-only { display: inline-block; }
+body.edit-mode #add-group-btn.edit-only { display: inline-block; }
+body.edit-mode .add-site-tile.edit-only { display: inline-block; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.hidden { display: none; }
+/* The generic single-form modal (#modal-overlay) is used for transient
+   forms like the add/edit-task form, which can open on top of the to-do
+   manager list (#todo-manage-overlay) -- always keep it topmost. */
+#modal-overlay { z-index: 31; }
+
+.modal {
+  background: rgba(32, 33, 36, 0.75);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 18px;
+  width: 280px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8);
+}
+
+.modal-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e8eaed;
+  margin-bottom: 12px;
+}
+
+.todo-manage-modal {
+  width: 380px;
+}
+
+#todo-manage-list {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.todo-manage-empty {
+  font-size: 12px;
+  color: #80868b;
+  padding: 4px 0 12px;
+}
+
+.todo-manage-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 6px;
+}
+.todo-manage-item:hover { background: rgba(255, 255, 255, 0.05); }
+
+.todo-manage-item-info { flex: 1; min-width: 0; }
+
+.todo-manage-item-name {
+  font-size: 13px;
+  color: #e8eaed;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-manage-item-meta {
+  font-size: 11px;
+  color: #80868b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-manage-item button {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #80868b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.todo-manage-item button:hover { background: rgba(255, 255, 255, 0.1); color: #e8eaed; }
+
+.modal-field {
+  margin-bottom: 10px;
+}
+
+.modal-field label {
+  display: block;
+  font-size: 11px;
+  color: #80868b;
+  margin-bottom: 3px;
+}
+
+.modal-input {
+  width: 100%;
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.35);
+  color: #e8eaed;
+  padding: 0 8px;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.modal-input:focus { border-color: #8ab4f8; }
+.modal-input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.6; }
+
+.modal-textarea {
+  height: 56px;
+  padding: 6px 8px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.modal-checkboxes {
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.modal-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: #e8eaed;
+  cursor: pointer;
+}
+.modal-checkbox-row input { accent-color: #8ab4f8; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.modal-actions button {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.modal-cancel {
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8eaed;
+}
+.modal-cancel:hover { background: rgba(255, 255, 255, 0.12); }
+
+.modal-ok {
+  background: #8ab4f8;
+  color: #131314;
+}
+.modal-ok:hover { background: #aecbfa; transform: translateY(-1px); }

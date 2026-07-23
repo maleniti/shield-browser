@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Shield Browser</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="tab-strip">
+    <button id="tabs-scroll-left" class="tab-scroll-btn" title="Scroll tabs left">&#8249;</button>
+    <div id="tabs"></div>
+    <button id="tabs-scroll-right" class="tab-scroll-btn" title="Scroll tabs right">&#8250;</button>
+    <button id="new-tab-btn" title="New tab">+</button>
+  </div>
+  <div id="toolbar">
+    <button class="nav-btn" id="back-btn" title="Back">&#8592;</button>
+    <button class="nav-btn" id="forward-btn" title="Forward">&#8594;</button>
+    <button class="nav-btn" id="reload-btn" title="Reload">&#8635;</button>
+    <input id="address-bar" type="text" placeholder="Search or type a URL" />
+    <button id="shield-btn" title="JavaScript &amp; cookies are blocked on this tab">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+    </button>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

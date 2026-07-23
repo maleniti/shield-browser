@@ -1,0 +1,41 @@
+{
+  "name": "shield-browser",
+  "version": "0.1.0",
+  "description": "A minimal Chromium-based (Electron) browser that always blocks ads and social media, with per-tab opt-in for JavaScript and cookies.",
+  "main": "main.js",
+  "author": "Nikola <nikola@maleniti.com>",
+  "homepage": "https://maleniti.com/shield-browser",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "dist": "electron-builder --linux AppImage deb"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.maleniti.shieldbrowser",
+    "productName": "Shield Browser",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "siteLists.js",
+      "renderer/**/*",
+      "welcome/**/*",
+      "blocklists/**/*",
+      "!**/*.test.js"
+    ],
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Network;WebBrowser;",
+      "target": ["AppImage", "deb"],
+      "executableArgs": ["--no-sandbox"]
+    }
+  }
+}
