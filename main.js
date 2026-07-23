@@ -502,6 +502,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    frame: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -526,6 +527,12 @@ function createWindow() {
   mainWindow.on('resize', deferredResize);
   mainWindow.on('maximize', deferredResize);
   mainWindow.on('unmaximize', deferredResize);
+
+  // frame: false drops the OS titlebar/controls -- renderer/index.html draws
+  // its own (#window-controls) in the tab strip, so mirror maximize state
+  // back to it to swap the maximize icon for a restore one.
+  mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized-state', true));
+  mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized-state', false));
 
   createTab();
 }
@@ -566,6 +573,14 @@ ipcMain.handle('get-site-lists', () => ({
 ipcMain.on('remove-from-whitelist', (_e, hostname) => siteLists.removeFromWhitelist(hostname));
 ipcMain.on('remove-from-blacklist', (_e, hostname) => siteLists.removeFromBlacklist(hostname));
 ipcMain.on('set-focus-mode', (_e, hostnames) => setFocusModeHosts(hostnames));
+
+// Custom titlebar buttons, standing in for the OS ones removed by frame: false.
+ipcMain.on('window-minimize', () => mainWindow.minimize());
+ipcMain.on('window-maximize-toggle', () => {
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+ipcMain.on('window-close', () => mainWindow.close());
 
 app.whenReady().then(() => {
   siteLists.load(app.getPath('userData'));

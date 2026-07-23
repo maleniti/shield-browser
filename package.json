@@ -1,6 +1,6 @@
 {
   "name": "shield-browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A minimal Chromium-based (Electron) browser that always blocks ads and social media, with per-tab opt-in for JavaScript and cookies.",
   "main": "main.js",
   "author": "Nikola <nikola@maleniti.com>",

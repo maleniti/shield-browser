@@ -65,17 +65,21 @@
       <button type="submit">Search</button>
     </form>
 
-    <div id="todo-section" class="todo-section hidden">
-      <div id="todo-list"></div>
-    </div>
-
     <button id="groups-scroll-up" class="groups-scroll-btn" title="Previous row">&#8963;</button>
     <div id="groups-viewport">
       <div id="groups"></div>
     </div>
     <button id="groups-scroll-down" class="groups-scroll-btn" title="Next row">&#8964;</button>
 
-    <button id="add-group-btn" class="edit-only">+ Add group</button>
+    <button id="add-group-btn" class="edit-only accent-btn">+ Add group</button>
+
+    <div id="todo-section" class="todo-section hidden">
+      <button id="todo-scroll-up" class="groups-scroll-btn" title="Previous task">&#8963;</button>
+      <div id="todo-viewport">
+        <div id="todo-list"></div>
+      </div>
+      <button id="todo-scroll-down" class="groups-scroll-btn" title="Next task">&#8964;</button>
+    </div>
   </main>
 
   <div id="modal-overlay" class="modal-overlay hidden">

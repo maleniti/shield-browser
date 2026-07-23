@@ -14,6 +14,11 @@ html, body {
   padding: 6px 8px 0;
   gap: 4px;
   background: #000;
+  /* frame: false (main.js) drops the OS titlebar, which is normally what you
+     drag to move the window -- make this bar (standing where a titlebar
+     would be, like Chrome's own tab strip) draggable instead. Every
+     interactive child below opts back out with no-drag so clicks still work. */
+  -webkit-app-region: drag;
 }
 
 #tabs {
@@ -23,11 +28,13 @@ html, body {
   gap: 4px;
   overflow-x: auto;
   scrollbar-width: none; /* Firefox */
+  -webkit-app-region: no-drag;
 }
 #tabs::-webkit-scrollbar { display: none; } /* Chromium */
 
 .tab-scroll-btn {
   flex: none;
+  -webkit-app-region: no-drag;
   display: none; /* shown via JS only when tabs overflow */
   align-items: center;
   justify-content: center;
@@ -106,6 +113,7 @@ html, body {
 
 #new-tab-btn {
   flex: none;
+  -webkit-app-region: no-drag;
   width: 28px;
   height: 28px;
   border: none;
@@ -122,6 +130,32 @@ html, body {
   color: #e8eaed;
   transform: scale(1.08);
 }
+
+#window-controls {
+  flex: none;
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  margin-bottom: 2px;
+}
+
+.win-btn {
+  width: 32px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9aa0a6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.win-btn:hover { background: rgba(255, 255, 255, 0.1); color: #e8eaed; }
+#win-close-btn:hover { background: #d93025; color: #fff; }
 
 #toolbar {
   display: flex;

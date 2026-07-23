@@ -1,7 +1,12 @@
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
-  min-height: 100%;
+  /* Exactly the viewport height (not min-height) so the page itself never
+     scrolls -- every section below is sized to fit within it, and any
+     overflow inside a section (groups, todo list) scrolls internally via its
+     own up/down buttons instead of growing the page. */
+  height: 100%;
+  overflow: hidden;
   font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   color: #e8eaed;
 }
@@ -11,6 +16,10 @@ html, body {
    paint tier above #bg-layer's negative z-index and blocked it below the
    fold whenever page content was shorter than the window. */
 html { background: #000; }
+body {
+  display: flex;
+  flex-direction: column;
+}
 
 #bg-layer {
   position: fixed;
@@ -33,13 +42,23 @@ main {
   /* Exactly 4 group cards (240px) + 3 gaps (20px) + main's own padding
      (24px each side) = 1068px, so a row fills with no leftover space. */
   max-width: 1068px;
+  width: 100%;
   margin: 0 auto;
   padding: 64px 24px 40px;
+  /* Fills whatever height body's flex column leaves it (the full viewport);
+     min-height: 0 lets that shrink below its content's natural height
+     instead of forcing the (overflow: hidden) ancestors to grow past the
+     viewport -- .todo-section below is the one child that actually absorbs
+     the leftover space via flex: 1. */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .todo-section {
   width: 100%;
-  margin-bottom: 24px;
+  margin-top: 24px;
   padding: 14px 16px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.045);
@@ -52,8 +71,23 @@ main {
     inset 0 -1px 0 rgba(0, 0, 0, 0.5),
     inset -1px 0 0 rgba(0, 0, 0, 0.3),
     0 12px 32px rgba(0, 0, 0, 0.55);
+  /* Absorbs all of main's leftover height, so however many tasks there are,
+     the to-do list scrolls within this fixed box (see #todo-viewport) rather
+     than growing the page. */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .todo-section.hidden { display: none; }
+
+#todo-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+}
+#todo-viewport::-webkit-scrollbar { display: none; } /* Chromium */
 
 .todo-item {
   display: flex;
@@ -111,6 +145,7 @@ main {
 }
 
 #groups-viewport {
+  flex: none; /* keep the exact one-row height set by updateGroupsLayout(), don't let main's flex column shrink it */
   overflow-y: auto;
   scrollbar-width: none; /* Firefox */
 }
@@ -125,7 +160,9 @@ main {
 
 .groups-scroll-btn {
   /* "Crystal clear": unlike the group cards, no blur/tint at all -- just a
-     beveled edge (light top, dark bottom) against whatever's behind it. */
+     beveled edge (light top, dark bottom) against whatever's behind it.
+     Shared with the to-do list's up/down buttons (#todo-scroll-up/-down). */
+  flex: none;
   display: none;
   width: 100%;
   height: 36px;
@@ -372,6 +409,7 @@ body.edit-mode #exit-edit-mode-btn {
   display: flex;
   gap: 8px;
   margin-bottom: 48px;
+  flex: none;
 }
 
 #search-input {
@@ -664,7 +702,8 @@ body.edit-mode .site-remove {
   background: rgba(255, 255, 255, 0.06);
 }
 
-#add-group-btn {
+.accent-btn {
+  flex: none;
   border: 1px solid transparent;
   background: transparent;
   color: #8ab4f8;
@@ -674,7 +713,7 @@ body.edit-mode .site-remove {
   border-radius: 8px;
   transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
 }
-#add-group-btn:hover {
+.accent-btn:hover {
   background: rgba(138, 180, 248, 0.1);
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
@@ -685,6 +724,14 @@ body.edit-mode .site-remove {
   font-size: 13px;
   margin-bottom: 24px;
 }
+
+.empty-state-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+body.edit-mode .enable-edit-mode-btn { display: none; }
 
 .edit-only { display: none; }
 body.edit-mode .group-header button.edit-only { display: inline-block; }
@@ -859,3 +906,30 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
   color: #131314;
 }
 .modal-ok:hover { background: #aecbfa; transform: translateY(-1px); }
+
+/* Shrinks the fixed-size chrome (search bar, group cards) on shorter
+   windows/screens, leaving more of the fixed viewport height for the to-do
+   list -- everything above still needs to fit without the page scrolling
+   (see html/body's overflow: hidden). The default window (800px tall minus
+   the 76px toolbar = 724px of content) stays above both breakpoints, so
+   normal use is unaffected -- these only kick in on genuinely smaller
+   windows/screens. */
+@media (max-height: 680px) {
+  main { padding: 32px 24px 24px; }
+  #search-form { margin-bottom: 24px; }
+  #search-input, #search-form button { height: 38px; }
+  .group { width: 200px; height: 230px; }
+  .site-avatar-wrap, .site-avatar, .add-tile-avatar { width: 40px; height: 40px; }
+  .site-favicon { width: 22px; height: 22px; }
+  .sites-viewport { height: 120px; }
+}
+
+@media (max-height: 560px) {
+  main { padding: 20px 24px 16px; }
+  #search-form { margin-bottom: 16px; }
+  .group { width: 170px; height: 190px; }
+  .site-avatar-wrap, .site-avatar, .add-tile-avatar { width: 32px; height: 32px; }
+  .site-favicon { width: 18px; height: 18px; }
+  .sites-viewport { height: 90px; }
+  .todo-item-desc { display: none; }
+}

@@ -11,4 +11,8 @@ contextBridge.exposeInMainWorld('browserAPI', {
   toggleJsCookies: (id) => ipcRenderer.send('toggle-js-cookies', id),
   getState: () => ipcRenderer.invoke('get-state'),
   onTabsState: (callback) => ipcRenderer.on('tabs-state', (_e, state) => callback(state)),
+  minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  toggleMaximizeWindow: () => ipcRenderer.send('window-maximize-toggle'),
+  closeWindow: () => ipcRenderer.send('window-close'),
+  onWindowMaximizedState: (callback) => ipcRenderer.on('window-maximized-state', (_e, maximized) => callback(maximized)),
 });

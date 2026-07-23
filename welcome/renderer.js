@@ -1,24 +1,5 @@
 const STORAGE_KEY = 'shield-browser-groups';
 
-const DEFAULT_GROUPS = [
-  {
-    id: 'work',
-    name: 'Work',
-    sites: [
-      { id: 'github', name: 'GitHub', url: 'https://github.com' },
-      { id: 'stackoverflow', name: 'Stack Overflow', url: 'https://stackoverflow.com' },
-    ],
-  },
-  {
-    id: 'news',
-    name: 'News',
-    sites: [
-      { id: 'bbc', name: 'BBC', url: 'https://www.bbc.com' },
-      { id: 'hn', name: 'Hacker News', url: 'https://news.ycombinator.com' },
-    ],
-  },
-];
-
 function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
@@ -28,9 +9,9 @@ function loadGroups() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {
-    // fall through to defaults
+    // fall through to empty
   }
-  return JSON.parse(JSON.stringify(DEFAULT_GROUPS));
+  return [];
 }
 
 let groups = loadGroups();
@@ -269,19 +250,34 @@ function render() {
   groupsEl.innerHTML = '';
 
   if (groups.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.textContent = 'No groups yet. Add one to organize your sites.';
-    groupsEl.appendChild(empty);
-  }
-
-  for (const group of groups) {
-    const { el, updateScrollButtons } = renderGroup(group);
-    groupsEl.appendChild(el);
-    updateScrollButtons(); // needs real layout, so only measurable once attached
+    groupsEl.appendChild(renderGroupsEmptyState());
+  } else {
+    for (const group of groups) {
+      const { el, updateScrollButtons } = renderGroup(group);
+      groupsEl.appendChild(el);
+      updateScrollButtons(); // needs real layout, so only measurable once attached
+    }
   }
 
   updateGroupsLayout();
+}
+
+function renderGroupsEmptyState() {
+  const wrap = document.createElement('div');
+  wrap.className = 'empty-state-wrap';
+
+  const message = document.createElement('div');
+  message.className = 'empty-state';
+  message.textContent = 'You have no links defined yet. Add some using edit mode.';
+  wrap.appendChild(message);
+
+  const btn = document.createElement('button');
+  btn.className = 'accent-btn enable-edit-mode-btn';
+  btn.textContent = 'Turn on edit mode';
+  btn.onclick = () => setEditMode(true);
+  wrap.appendChild(btn);
+
+  return wrap;
 }
 
 function renderGroup(group) {
@@ -1137,8 +1133,57 @@ function updateFocusMode(pendingOverdue) {
 
 const todoSectionEl = document.getElementById('todo-section');
 const todoListEl = document.getElementById('todo-list');
+const todoViewportEl = document.getElementById('todo-viewport');
+const todoScrollUpBtn = document.getElementById('todo-scroll-up');
+const todoScrollDownBtn = document.getElementById('todo-scroll-down');
+
+// Same up/down-by-one-row approach as the link groups (#groups-viewport),
+// except a "row" here is trivially one task -- to-dos are a single column,
+// not a wrapping grid -- so there's no gap to account for, just the item's
+// own height.
+function updateTodoScrollButtons() {
+  const overflowing = todoViewportEl.scrollHeight > todoViewportEl.clientHeight + 1;
+  todoScrollUpBtn.classList.toggle('visible', overflowing);
+  todoScrollDownBtn.classList.toggle('visible', overflowing);
+  if (!overflowing) return;
+  todoScrollUpBtn.disabled = todoViewportEl.scrollTop <= 0;
+  todoScrollDownBtn.disabled = todoViewportEl.scrollTop >= todoViewportEl.scrollHeight - todoViewportEl.clientHeight - 1;
+}
+
+function todoRowStep() {
+  const firstItem = todoListEl.querySelector('.todo-item');
+  return firstItem ? firstItem.getBoundingClientRect().height : todoViewportEl.clientHeight;
+}
+
+todoScrollUpBtn.onclick = () => todoViewportEl.scrollBy({ top: -todoRowStep(), behavior: 'smooth' });
+todoScrollDownBtn.onclick = () => todoViewportEl.scrollBy({ top: todoRowStep(), behavior: 'smooth' });
+todoViewportEl.addEventListener('scroll', updateTodoScrollButtons);
+window.addEventListener('resize', updateTodoScrollButtons);
+
+function renderTodoEmptyState() {
+  todoListEl.innerHTML = '';
+
+  const message = document.createElement('div');
+  message.className = 'empty-state';
+  message.textContent = 'You have no to-dos yet.';
+  todoListEl.appendChild(message);
+
+  const btn = document.createElement('button');
+  btn.className = 'accent-btn';
+  btn.textContent = '+ Add task';
+  btn.onclick = () => openTaskForm(null);
+  todoListEl.appendChild(btn);
+}
 
 function renderTodo() {
+  if (tasks.length === 0) {
+    todoSectionEl.classList.remove('hidden');
+    renderTodoEmptyState();
+    updateFocusMode([]);
+    updateTodoScrollButtons();
+    return;
+  }
+
   const items = computeTodoDisplayItems();
 
   if (items.length === 0) {
@@ -1213,6 +1258,7 @@ function renderTodo() {
   }
 
   updateFocusMode(pendingOverdue);
+  updateTodoScrollButtons();
 }
 
 const todoManageOverlay = document.getElementById('todo-manage-overlay');
@@ -1270,7 +1316,12 @@ document.getElementById('todo-manage-btn').onclick = () => {
 document.getElementById('todo-manage-close').onclick = () => todoManageOverlay.classList.add('hidden');
 document.getElementById('todo-add-btn').onclick = () => openTaskForm(null);
 
+// render() (groups) must run before renderTodo(): .todo-section's flex-based
+// height depends on #groups-viewport's height already being finalized (set
+// by updateGroupsLayout() inside render()) -- calling renderTodo() first
+// would measure the todo viewport's available space before groups claim
+// theirs, understating how much actually overflows.
+render();
+
 renderTodo();
 setInterval(renderTodo, 30000); // catches a task crossing its due time without needing user interaction
-
-render();
