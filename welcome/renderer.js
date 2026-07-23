@@ -660,15 +660,20 @@ searchEngineSelect.onchange = () => {
 };
 
 const BG_STORAGE_KEY = 'shield-browser-background';
+const DEFAULT_BG_SRC = '../shield-browser-16x9.png';
 
 function loadBackground() {
   try {
     const raw = localStorage.getItem(BG_STORAGE_KEY);
+    // Only a genuinely first launch (nothing in storage yet) falls through to
+    // the bundled default -- an explicit "Remove background" still saves
+    // src: null, and that stored null must stick, not get replaced back with
+    // the default on the next load.
     if (raw) return JSON.parse(raw);
   } catch {
     // fall through to default
   }
-  return { src: null, opacity: 30 };
+  return { src: DEFAULT_BG_SRC, opacity: 30 };
 }
 
 let background = loadBackground();
