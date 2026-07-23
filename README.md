@@ -121,12 +121,14 @@ Builds an AppImage and a `.deb` into `dist/`.
 - **`.deb`** — install with `sudo apt install ./dist/shield-browser_0.1.0_amd64.deb`.
   Adds a menu entry ("Shield Browser") that launches correctly out of the box —
   the sandbox flag is baked into its desktop entry.
-- **AppImage** — run it via `./run-appimage.sh`, which launches the built
-  `dist/*.AppImage` with `--no-sandbox`. The raw `.AppImage` file can't be
-  double-clicked directly: unlike the `.deb`, there's no desktop-entry hook to
-  bake the flag into a single-file artifact, and Chromium's sandbox helper
-  can't be fixed the normal way (`chown root` + `chmod 4755`) because AppImage
-  extracts it to a fresh, differently-named temp path on every launch.
+- **AppImage** — on most systems the raw `.AppImage` just works, double-click
+  or run directly. On Ubuntu 24.04+ specifically (AppArmor blocks Chromium's
+  modern namespace sandbox, forcing a fallback to the legacy setuid helper,
+  which can't be fixed the normal way — `chown root` + `chmod 4755` — because
+  AppImage extracts it to a fresh, differently-named temp path on every
+  launch), it'll fail with a sandbox error unless launched with
+  `--no-sandbox`; use `./run-appimage.sh` for that (it also has no
+  desktop-entry hook to bake the flag in the way the `.deb` does).
 
 ## Known limitations
 

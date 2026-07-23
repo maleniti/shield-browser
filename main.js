@@ -6,12 +6,17 @@ const { classify } = require('./blocklists/match');
 const { renderBlockedPage } = require('./blocklists/blockedPage');
 const siteLists = require('./siteLists');
 
-// Chromium's setuid chrome-sandbox helper needs to be owned by root, which
-// doesn't hold up for an AppImage (it extracts to a fresh FUSE mount point on
-// every launch, so there's nothing stable to chown). Disabling the sandbox
-// trades away Chromium's OS-level per-renderer isolation -- weaker
-// defense-in-depth for a browser that visits untrusted sites -- for the app
-// just running anywhere with no setup.
+// On Ubuntu 24.04+, AppArmor restricts unprivileged user namespaces, which
+// blocks Chromium's modern namespace-based sandbox and forces a fallback to
+// the legacy setuid chrome-sandbox helper -- one that needs to be owned by
+// root, which doesn't hold up for an AppImage (it extracts to a fresh FUSE
+// mount point on every launch, so there's nothing stable to chown). This is
+// Ubuntu-specific, not an Electron/AppImage limitation in general: on
+// distros without that AppArmor restriction (confirmed on Debian), the
+// namespace sandbox just works and the AppImage runs fine with no flag at
+// all. Disabling the sandbox trades away Chromium's OS-level per-renderer
+// isolation -- weaker defense-in-depth for a browser that visits untrusted
+// sites -- for the app just running unconditionally on affected systems.
 //
 // This can only be done via an actual --no-sandbox CLI flag present from the
 // process's very first invocation: the sandbox check happens in native code
