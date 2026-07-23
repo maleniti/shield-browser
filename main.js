@@ -565,7 +565,21 @@ ipcMain.handle('get-state', () => serializeTabs());
 // whitelist/blacklist/link-hosts data these read is main-process state
 // (needed for the webRequest gate above).
 ipcMain.on('sync-link-hosts', (_e, hostnames) => siteLists.setLinkHosts(hostnames));
-ipcMain.on('whitelist-host', (_e, hostname) => siteLists.addToWhitelist(hostname));
+// A social/ad domain is blocked unconditionally (see installNetworkBlocking)
+// regardless of the whitelist, so whitelisting one would only ever be a
+// misleading no-op entry -- refuse it here, the one entry point every
+// renderer-initiated whitelist request (manual add, group site links) goes
+// through, rather than trusting each renderer-side caller to have already
+// checked. (handleDirectNavigation and requestAccessDecision call
+// siteLists.addToWhitelist directly from within this process instead of
+// through here, but both already exempt classify() matches earlier in the
+// same flow, so they can't reach this misleading state either.)
+ipcMain.on('whitelist-host', (_e, hostname) => {
+  if (classify(`https://${hostname}`)) return;
+  siteLists.addToWhitelist(hostname);
+});
+ipcMain.on('blacklist-host', (_e, hostname) => siteLists.addToBlacklist(hostname));
+ipcMain.handle('is-blocked-by-default', (_e, hostname) => !!classify(`https://${hostname}`));
 ipcMain.handle('get-site-lists', () => ({
   whitelist: siteLists.getWhitelist(),
   blacklist: siteLists.getBlacklist(),

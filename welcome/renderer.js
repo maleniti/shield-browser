@@ -504,6 +504,10 @@ async function addSite(groupId) {
   if (!result) return;
   const siteUrl = normalizeUrl(result.url);
   if (!siteUrl) return;
+  if (await window.siteListAPI.isBlockedByDefault(hostnameOf(siteUrl))) {
+    alert('This site is blocked by default (ads/social) and can\'t be added as a link.');
+    return;
+  }
   group.sites.push({ id: uid(), name: result.name, url: siteUrl });
   window.siteListAPI.whitelistHost(hostnameOf(siteUrl));
   saveGroups();
@@ -530,6 +534,10 @@ async function editSite(groupId, siteId) {
   if (!result) return;
   const siteUrl = normalizeUrl(result.url);
   if (!siteUrl) return;
+  if (await window.siteListAPI.isBlockedByDefault(hostnameOf(siteUrl))) {
+    alert('This site is blocked by default (ads/social) and can\'t be added as a link.');
+    return;
+  }
   site.name = result.name;
   site.url = siteUrl;
   site.favicon = undefined; // url/name changed; let it re-resolve rather than reuse a stale one
@@ -791,13 +799,21 @@ bgRemoveBtn.onclick = () => {
 renderBackground();
 
 // Site whitelist/blacklist management (main-process-owned; see siteLists.js
-// and main.js's webRequest gate). This UI only supports removing an entry
-// (reverting it to "undecided", so it'll be asked about again next time) --
-// there's no move-between-lists action to keep this to a minimal edit surface.
+// and main.js's webRequest gate), edited via its own modal (hamburger menu)
+// rather than previewed inline -- supports adding a hostname directly to
+// either list, not just removing entries that got added automatically.
+// Whitelist entries also get a "move to blacklist" button (blacklisting
+// already implies removal from the whitelist, via siteLists.addToBlacklist),
+// deliberately one-directional -- there's no matching "move to whitelist" on
+// blacklist entries, since re-allowing a deliberately blocked site is a
+// bigger decision than reusing this one-click shortcut for.
 const whitelistListEl = document.getElementById('whitelist-list');
 const blacklistListEl = document.getElementById('blacklist-list');
+const siteListsOverlay = document.getElementById('site-lists-overlay');
+const whitelistAddBtn = document.getElementById('whitelist-add-btn');
+const blacklistAddBtn = document.getElementById('blacklist-add-btn');
 
-function renderSiteList(container, hostnames, onRemove) {
+function renderSiteList(container, hostnames, onRemove, onMove) {
   container.innerHTML = '';
   if (hostnames.length === 0) {
     const empty = document.createElement('div');
@@ -815,6 +831,14 @@ function renderSiteList(container, hostnames, onRemove) {
     label.title = hostname;
     item.appendChild(label);
 
+    if (onMove) {
+      const moveBtn = document.createElement('button');
+      moveBtn.textContent = '→';
+      moveBtn.title = 'Move to blacklist';
+      moveBtn.onclick = () => onMove(hostname);
+      item.appendChild(moveBtn);
+    }
+
     const removeBtn = document.createElement('button');
     removeBtn.textContent = '×';
     removeBtn.title = 'Remove';
@@ -827,18 +851,53 @@ function renderSiteList(container, hostnames, onRemove) {
 
 async function renderSiteLists() {
   const { whitelist, blacklist } = await window.siteListAPI.getLists();
-  renderSiteList(whitelistListEl, whitelist, (hostname) => {
-    window.siteListAPI.removeFromWhitelist(hostname);
-    renderSiteLists();
-  });
+  renderSiteList(
+    whitelistListEl,
+    whitelist,
+    (hostname) => {
+      window.siteListAPI.removeFromWhitelist(hostname);
+      renderSiteLists();
+    },
+    (hostname) => {
+      window.siteListAPI.blacklistHost(hostname);
+      renderSiteLists();
+    }
+  );
   renderSiteList(blacklistListEl, blacklist, (hostname) => {
     window.siteListAPI.removeFromBlacklist(hostname);
     renderSiteLists();
   });
 }
 
-renderSiteLists();
-menuBtn.addEventListener('click', renderSiteLists); // refresh in case a popup decision landed elsewhere
+async function addHostnameTo(action, title, guardBlocked) {
+  const input = await showPrompt(title);
+  if (!input) return;
+  const url = normalizeUrl(input);
+  const hostname = url && hostnameOf(url);
+  if (!hostname) return;
+  // Only the whitelist side needs this check -- a social/ad domain is
+  // blocked unconditionally regardless of the whitelist (see main.js's
+  // installNetworkBlocking), so whitelisting one would be a misleading
+  // no-op; blacklisting one is redundant but not misleading, so it's left
+  // allowed.
+  if (guardBlocked && (await window.siteListAPI.isBlockedByDefault(hostname))) {
+    alert('This site is blocked by default (ads/social) and can\'t be added to the whitelist.');
+    return;
+  }
+  action(hostname);
+  renderSiteLists();
+}
+
+whitelistAddBtn.onclick = () =>
+  addHostnameTo((hostname) => window.siteListAPI.whitelistHost(hostname), 'Add to whitelist', true);
+blacklistAddBtn.onclick = () => addHostnameTo((hostname) => window.siteListAPI.blacklistHost(hostname), 'Add to blacklist');
+
+document.getElementById('site-lists-manage-btn').onclick = () => {
+  menuDropdown.classList.add('hidden');
+  renderSiteLists(); // refresh in case a popup decision (Allow/Disallow) landed elsewhere since it was last open
+  siteListsOverlay.classList.remove('hidden');
+};
+document.getElementById('site-lists-close').onclick = () => siteListsOverlay.classList.add('hidden');
 
 // When a page you've linked to requests some brand-new site directly (not
 // via a click you made yourself), main.js auto-whitelists it so it's

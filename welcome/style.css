@@ -369,7 +369,16 @@ body.edit-mode #exit-edit-mode-btn {
   max-height: 110px;
   overflow-y: auto;
   margin: 2px 6px 8px;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
+.site-list::-webkit-scrollbar { width: 6px; } /* Chromium */
+.site-list::-webkit-scrollbar-track { background: transparent; }
+.site-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+.site-list::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); }
 .site-list-empty {
   font-size: 11px;
   color: #5f6368;
@@ -773,6 +782,26 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
 
 .todo-manage-modal {
   width: 380px;
+}
+
+.site-lists-modal {
+  width: 420px;
+}
+
+.site-lists-columns {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.site-lists-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.site-lists-column .site-list {
+  max-height: 220px;
+  margin: 2px 0 8px;
 }
 
 #todo-manage-list {

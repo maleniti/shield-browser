@@ -48,11 +48,7 @@
 
     <div class="menu-divider"></div>
 
-    <div class="menu-label">Site whitelist</div>
-    <div id="whitelist-list" class="site-list"></div>
-
-    <div class="menu-label">Site blacklist</div>
-    <div id="blacklist-list" class="site-list"></div>
+    <button id="site-lists-manage-btn" class="menu-btn-small menu-btn-wide">Site whitelist / blacklist&hellip;</button>
 
     <div class="menu-divider"></div>
 
@@ -100,6 +96,27 @@
       <button id="todo-add-btn" class="menu-btn-small">+ Add task</button>
       <div class="modal-actions">
         <button id="todo-manage-close" class="modal-cancel">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="site-lists-overlay" class="modal-overlay hidden">
+    <div class="modal site-lists-modal">
+      <div class="modal-title">Site whitelist &amp; blacklist</div>
+      <div class="site-lists-columns">
+        <div class="site-lists-column">
+          <div class="menu-label">Whitelist</div>
+          <div id="whitelist-list" class="site-list"></div>
+          <button id="whitelist-add-btn" class="menu-btn-small menu-btn-wide">+ Add</button>
+        </div>
+        <div class="site-lists-column">
+          <div class="menu-label">Blacklist</div>
+          <div id="blacklist-list" class="site-list"></div>
+          <button id="blacklist-add-btn" class="menu-btn-small menu-btn-wide">+ Add</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="site-lists-close" class="modal-cancel">Close</button>
       </div>
     </div>
   </div>
