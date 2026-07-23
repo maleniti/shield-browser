@@ -50,8 +50,21 @@ function safeHostname(requestUrl) {
   }
 }
 
+// webContents.fromId() throws (rather than returning undefined) when passed
+// an id that isn't a live webContents' -- notably undefined itself, which
+// some requests carry (e.g. a background prefetch/beacon not tied to any
+// particular tab, or one that outlives the tab that spawned it).
+function safeWebContentsFromId(id) {
+  if (id == null) return null;
+  try {
+    return webContents.fromId(id);
+  } catch {
+    return null;
+  }
+}
+
 function showBlockedPage(details, hostname, reason) {
-  const wc = webContents.fromId(details.webContentsId);
+  const wc = safeWebContentsFromId(details.webContentsId);
   if (wc && !wc.isDestroyed()) {
     const html = renderBlockedPage(hostname, reason);
     wc.loadURL('data:text/html;charset=UTF-8,' + encodeURIComponent(html));
@@ -90,7 +103,7 @@ function getRequestingHostname(details) {
     const chainOrigin = mainFrameChainOrigin.get(details.id);
     if (chainOrigin) return chainOrigin;
   }
-  const wc = webContents.fromId(details.webContentsId);
+  const wc = safeWebContentsFromId(details.webContentsId);
   if (!wc || wc.isDestroyed()) return null;
   return safeHostname(wc.getURL());
 }
@@ -504,6 +517,11 @@ function createWindow() {
     height: 800,
     frame: false,
     autoHideMenuBar: true,
+    // Only the packaged .deb/AppImage picks up build/icon.png on its own (via
+    // electron-builder's config) -- an unpackaged `npm start` run has nothing
+    // set here, so Linux window managers show a generic placeholder in the
+    // taskbar/alt-tab instead of the app's actual icon.
+    icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
