@@ -1023,7 +1023,8 @@ function describeTaskSchedule(task) {
     weeks: task.frequency.interval === 1 ? 'Weekly' : `Every ${task.frequency.interval} weeks`,
     months: task.frequency.interval === 1 ? 'Monthly' : `Every ${task.frequency.interval} months`,
   };
-  return `${task.dueDate} ${task.dueTime} · ${freqLabels[task.frequency.type]}`;
+  const base = `${task.dueDate} ${task.dueTime} · ${freqLabels[task.frequency.type]}`;
+  return task.endDate ? `${base} until ${task.endDate}` : base;
 }
 
 const FREQUENCY_OPTIONS = [
@@ -1070,6 +1071,13 @@ async function openTaskForm(existingTask) {
         required: false,
       },
       {
+        name: 'endDate',
+        label: 'End date (optional, recurring tasks only -- last recurrence on or before this date)',
+        type: 'date',
+        value: existingTask && existingTask.endDate ? existingTask.endDate : '',
+        required: false,
+      },
+      {
         name: 'groupIds',
         label: 'Sites needed for this task',
         type: 'checkboxes',
@@ -1082,6 +1090,12 @@ async function openTaskForm(existingTask) {
   );
   if (!result) return;
 
+  const endDate = result.endDate || null;
+  if (endDate && endDate < result.dueDate) {
+    alert('End date can\'t be before the due date.');
+    return;
+  }
+
   const frequency = decodeFrequency(result.frequencyType, result.interval);
   if (existingTask) {
     existingTask.name = result.name;
@@ -1089,6 +1103,7 @@ async function openTaskForm(existingTask) {
     existingTask.dueDate = result.dueDate;
     existingTask.dueTime = result.dueTime;
     existingTask.frequency = frequency;
+    existingTask.endDate = endDate;
     existingTask.groupIds = result.groupIds;
   } else {
     tasks.push({
@@ -1097,6 +1112,7 @@ async function openTaskForm(existingTask) {
       description: result.description,
       dueDate: result.dueDate,
       dueTime: result.dueTime,
+      endDate,
       frequency,
       groupIds: result.groupIds,
       completions: {},
@@ -1110,7 +1126,6 @@ async function openTaskForm(existingTask) {
 function deleteTask(taskId) {
   const task = tasks.find((t) => t.id === taskId);
   if (!task) return;
-  if (!confirm(`Delete task "${task.name}"?`)) return;
   tasks = tasks.filter((t) => t.id !== taskId);
   if (activeTaskId === taskId) {
     activeTaskId = null;
@@ -1234,6 +1249,27 @@ function renderTodoEmptyState() {
   todoListEl.appendChild(btn);
 }
 
+// "Today"/"Yesterday"/"Tomorrow" relative to the real current date, so it
+// stays correct across the day boundary without re-deriving it per call --
+// anything further out (a carried-over item more than a day overdue) just
+// gets its plain weekday + date, since "3 days ago" style phrasing wasn't
+// asked for.
+function describeDayLabel(dateISO, todayISO) {
+  const dateStr = new Date(dateISO + 'T00:00:00').toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+  if (dateISO === todayISO) return `Today, ${dateStr}`;
+  if (dateISO === Recurrence.dateToISO(Recurrence.addDays(new Date(todayISO + 'T00:00:00'), -1))) {
+    return `Yesterday, ${dateStr}`;
+  }
+  if (dateISO === Recurrence.dateToISO(Recurrence.addDays(new Date(todayISO + 'T00:00:00'), 1))) {
+    return `Tomorrow, ${dateStr}`;
+  }
+  return dateStr;
+}
+
 function renderTodo() {
   if (tasks.length === 0) {
     todoSectionEl.classList.remove('hidden');
@@ -1262,58 +1298,78 @@ function renderTodo() {
   saveActiveTaskId();
 
   todoListEl.innerHTML = '';
+
+  // Grouped and headed by occurrence date (Today/Tomorrow/Yesterday/plain
+  // date) rather than the flat, task-creation-order list this used to be --
+  // makes the 6pm-onward boundary between today's and tomorrow's preview
+  // (and any older carried-over items) visually unambiguous. ISO date
+  // strings sort chronologically as plain strings, no date parsing needed.
+  const itemsByDate = new Map();
   for (const item of items) {
-    const row = document.createElement('div');
-    row.className =
-      'todo-item' + (item.completed ? ' completed' : '') + (item.task.id === activeTaskId ? ' active' : '');
+    if (!itemsByDate.has(item.occurrenceDate)) itemsByDate.set(item.occurrenceDate, []);
+    itemsByDate.get(item.occurrenceDate).push(item);
+  }
+  const todayISO = Recurrence.dateToISO(new Date());
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = item.completed;
-    checkbox.disabled = item.kind === 'tomorrow';
-    checkbox.onclick = (e) => {
-      e.stopPropagation();
-      toggleTaskCompletion(item.task, item.occurrenceDate);
-    };
-    row.appendChild(checkbox);
+  for (const dateISO of [...itemsByDate.keys()].sort()) {
+    const header = document.createElement('div');
+    header.className = 'todo-day-header';
+    header.textContent = describeDayLabel(dateISO, todayISO);
+    todoListEl.appendChild(header);
 
-    const text = document.createElement('div');
-    text.className = 'todo-item-text';
+    for (const item of itemsByDate.get(dateISO)) {
+      const row = document.createElement('div');
+      row.className =
+        'todo-item' + (item.completed ? ' completed' : '') + (item.task.id === activeTaskId ? ' active' : '');
 
-    const name = document.createElement('div');
-    name.className = 'todo-item-name';
-    name.textContent = item.task.name;
-    text.appendChild(name);
-
-    if (item.task.description) {
-      const desc = document.createElement('div');
-      desc.className = 'todo-item-desc';
-      desc.textContent = item.task.description;
-      text.appendChild(desc);
-    }
-
-    const meta = document.createElement('div');
-    meta.className = 'todo-item-meta' + (item.overdue && !item.completed ? ' overdue' : '');
-    meta.textContent =
-      item.kind === 'tomorrow'
-        ? `Tomorrow, ${item.task.dueTime}`
-        : item.overdue && !item.completed
-          ? `Overdue since ${item.occurrenceDate} ${item.task.dueTime}`
-          : `Due ${item.task.dueTime}`;
-    text.appendChild(meta);
-
-    row.appendChild(text);
-
-    if (pendingOverdue.length > 1 && pendingOverdue.some((i) => i.task.id === item.task.id)) {
-      row.title = 'Click to work on this task now';
-      row.onclick = () => {
-        activeTaskId = item.task.id;
-        saveActiveTaskId();
-        renderTodo();
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = item.completed;
+      checkbox.disabled = item.kind === 'tomorrow';
+      checkbox.onclick = (e) => {
+        e.stopPropagation();
+        toggleTaskCompletion(item.task, item.occurrenceDate);
       };
-    }
+      row.appendChild(checkbox);
 
-    todoListEl.appendChild(row);
+      const text = document.createElement('div');
+      text.className = 'todo-item-text';
+
+      const name = document.createElement('div');
+      name.className = 'todo-item-name';
+      name.textContent = item.task.name;
+      text.appendChild(name);
+
+      if (item.task.description) {
+        const desc = document.createElement('div');
+        desc.className = 'todo-item-desc';
+        desc.textContent = item.task.description;
+        text.appendChild(desc);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'todo-item-meta' + (item.overdue && !item.completed ? ' overdue' : '');
+      meta.textContent =
+        item.kind === 'tomorrow'
+          ? `Tomorrow, ${item.task.dueTime}`
+          : item.overdue && !item.completed
+            ? `Overdue since ${item.occurrenceDate} ${item.task.dueTime}`
+            : `Due ${item.task.dueTime}`;
+      text.appendChild(meta);
+
+      row.appendChild(text);
+
+      if (pendingOverdue.length > 1 && pendingOverdue.some((i) => i.task.id === item.task.id)) {
+        row.title = 'Click to work on this task now';
+        row.onclick = () => {
+          activeTaskId = item.task.id;
+          saveActiveTaskId();
+          renderTodo();
+        };
+      }
+
+      todoListEl.appendChild(row);
+    }
   }
 
   updateFocusMode(pendingOverdue);
@@ -1356,11 +1412,34 @@ function renderTodoManageList() {
     editBtn.onclick = () => openTaskForm(task);
     row.appendChild(editBtn);
 
+    // Two clicks to delete (arm -> confirm), same as a group's site-remove
+    // button, instead of a native confirm() dialog. Moving off the row
+    // disarms it back to the trash-can icon.
     const deleteBtn = document.createElement('button');
-    deleteBtn.title = 'Delete';
-    deleteBtn.innerHTML =
+    const trashIcon =
       '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
-    deleteBtn.onclick = () => deleteTask(task.id);
+    const confirmIcon =
+      '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M11 7h2v8h-2zM11 16h2v2h-2z"/></svg>';
+    deleteBtn.title = 'Delete';
+    deleteBtn.innerHTML = trashIcon;
+    let deleteArmed = false;
+    deleteBtn.onclick = () => {
+      if (!deleteArmed) {
+        deleteArmed = true;
+        deleteBtn.innerHTML = confirmIcon;
+        deleteBtn.title = 'Click again to delete';
+        deleteBtn.classList.add('confirm');
+      } else {
+        deleteTask(task.id);
+      }
+    };
+    row.addEventListener('mouseleave', () => {
+      if (!deleteArmed) return;
+      deleteArmed = false;
+      deleteBtn.innerHTML = trashIcon;
+      deleteBtn.title = 'Delete';
+      deleteBtn.classList.remove('confirm');
+    });
     row.appendChild(deleteBtn);
 
     todoManageListEl.appendChild(row);
@@ -1374,6 +1453,80 @@ document.getElementById('todo-manage-btn').onclick = () => {
 };
 document.getElementById('todo-manage-close').onclick = () => todoManageOverlay.classList.add('hidden');
 document.getElementById('todo-add-btn').onclick = () => openTaskForm(null);
+
+// ---------------------------------------------------------------------------
+// About dialog: app info plus a "View Change log" button opening a separate,
+// larger modal for the changelog itself (welcome/changelog.js), grouped by
+// version, newest first. The version number comes live from app.getVersion()
+// (main.js) rather than being duplicated here, so it can't drift out of sync
+// with package.json.
+// ---------------------------------------------------------------------------
+
+const aboutOverlay = document.getElementById('about-overlay');
+const aboutVersionEl = document.getElementById('about-version');
+const changelogOverlay = document.getElementById('changelog-overlay');
+const changelogEntriesEl = document.getElementById('changelog-entries');
+
+function renderChangelog() {
+  changelogEntriesEl.innerHTML = '';
+  for (const entry of CHANGELOG) {
+    const section = document.createElement('div');
+    section.className = 'changelog-entry';
+
+    const heading = document.createElement('div');
+    heading.className = 'changelog-version';
+    heading.textContent = entry.version ? `v${entry.version}` : entry.label;
+    if (entry.date) {
+      const date = document.createElement('span');
+      date.className = 'changelog-date';
+      date.textContent = ` — ${entry.date}`;
+      heading.appendChild(date);
+    }
+    section.appendChild(heading);
+
+    const groups = [
+      ['Added', entry.added],
+      ['Fixed', entry.fixed],
+      ['Known issues', entry.known],
+    ];
+    for (const [label, list] of groups) {
+      if (!list || list.length === 0) continue;
+      const groupLabel = document.createElement('div');
+      groupLabel.className = 'changelog-group-label';
+      groupLabel.textContent = label;
+      section.appendChild(groupLabel);
+
+      const ul = document.createElement('ul');
+      ul.className = 'changelog-list';
+      for (const line of list) {
+        const li = document.createElement('li');
+        li.textContent = line;
+        ul.appendChild(li);
+      }
+      section.appendChild(ul);
+    }
+
+    changelogEntriesEl.appendChild(section);
+  }
+}
+
+document.getElementById('about-btn').onclick = async () => {
+  menuDropdown.classList.add('hidden');
+  aboutVersionEl.textContent = `Version ${await window.siteListAPI.getAppVersion()}`;
+  aboutOverlay.classList.remove('hidden');
+};
+document.getElementById('about-close').onclick = () => aboutOverlay.classList.add('hidden');
+document.getElementById('about-homepage-link').onclick = (e) => {
+  e.preventDefault();
+  window.siteListAPI.openExternal(e.target.href);
+};
+
+document.getElementById('view-changelog-btn').onclick = () => {
+  aboutOverlay.classList.add('hidden');
+  renderChangelog();
+  changelogOverlay.classList.remove('hidden');
+};
+document.getElementById('changelog-close').onclick = () => changelogOverlay.classList.add('hidden');
 
 // render() (groups) must run before renderTodo(): .todo-section's flex-based
 // height depends on #groups-viewport's height already being finalized (set

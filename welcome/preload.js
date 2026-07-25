@@ -10,4 +10,6 @@ contextBridge.exposeInMainWorld('siteListAPI', {
   removeFromBlacklist: (hostname) => ipcRenderer.send('remove-from-blacklist', hostname),
   onOfferAddLink: (callback) => ipcRenderer.on('offer-add-link', (_e, hostname) => callback(hostname)),
   setFocusMode: (hostnames) => ipcRenderer.send('set-focus-mode', hostnames),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  openExternal: (url) => ipcRenderer.send('open-external', url),
 });

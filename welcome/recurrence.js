@@ -35,6 +35,7 @@ function monthsBetween(isoA, isoB) {
 
 // Does `task` have an occurrence exactly on `dateISO`?
 function occursOn(task, dateISO) {
+  if (task.endDate && dateISO > task.endDate) return false;
   const diffDays = daysBetween(task.dueDate, dateISO);
   if (diffDays < 0) return false;
   const interval = Math.max(1, task.frequency.interval || 1);
@@ -62,8 +63,14 @@ function occursOn(task, dateISO) {
 // due date hasn't arrived yet. For 'once' tasks this is just the due date
 // itself (for any today on or after it) -- a missed one-off doesn't vanish,
 // it stays "pending" until completed, same as any other frequency.
+//
+// task.endDate (optional) stops the series on or before that date -- if it's
+// earlier than todayISO, the search is clamped to endDate instead, same as
+// if "today" were endDate, so a recurring task doesn't keep surfacing missed
+// occurrences past the date its recurrences were meant to stop.
 function mostRecentOccurrenceOnOrBefore(task, todayISO) {
-  const diffDays = daysBetween(task.dueDate, todayISO);
+  const searchISO = task.endDate && task.endDate < todayISO ? task.endDate : todayISO;
+  const diffDays = daysBetween(task.dueDate, searchISO);
   if (diffDays < 0) return null;
   const interval = Math.max(1, task.frequency.interval || 1);
   switch (task.frequency.type) {
@@ -80,18 +87,18 @@ function mostRecentOccurrenceOnOrBefore(task, todayISO) {
     }
     case 'months': {
       const due = new Date(task.dueDate + 'T00:00:00');
-      const today = new Date(todayISO + 'T00:00:00');
+      const search = new Date(searchISO + 'T00:00:00');
       const occurrenceForStep = (stepIndex) => {
         const d = new Date(due.getFullYear(), due.getMonth() + stepIndex * interval, 1);
         d.setDate(Math.min(due.getDate(), daysInMonth(d.getFullYear(), d.getMonth())));
         return d;
       };
       // monthsBetween ignores day-of-month, so e.g. Jan-31 -> Feb (clamped to
-      // the 28th) overshoots for any today earlier than the 28th; step back
-      // one interval when that happens.
-      let stepIndex = Math.floor(monthsBetween(task.dueDate, todayISO) / interval);
+      // the 28th) overshoots for any search date earlier than the 28th; step
+      // back one interval when that happens.
+      let stepIndex = Math.floor(monthsBetween(task.dueDate, searchISO) / interval);
       let occurrence = occurrenceForStep(stepIndex);
-      if (occurrence > today) occurrence = occurrenceForStep(--stepIndex);
+      if (occurrence > search) occurrence = occurrenceForStep(--stepIndex);
       return stepIndex < 0 ? null : dateToISO(occurrence);
     }
     default:

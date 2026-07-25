@@ -89,6 +89,14 @@ main {
 }
 #todo-viewport::-webkit-scrollbar { display: none; } /* Chromium */
 
+.todo-day-header {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  padding: 10px 6px 4px;
+}
+.todo-day-header:first-child { padding-top: 2px; }
+
 .todo-item {
   display: flex;
   align-items: flex-start;
@@ -810,6 +818,104 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
   margin-bottom: 10px;
 }
 
+.about-modal {
+  width: 480px;
+}
+
+.about-info {
+  margin-bottom: 4px;
+}
+
+.about-app-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.about-version {
+  font-size: 12px;
+  color: #9aa0a6;
+  margin-top: 2px;
+}
+
+.about-description {
+  font-size: 12px;
+  color: #e8eaed;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.about-meta {
+  font-size: 12px;
+  color: #9aa0a6;
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.about-meta a {
+  color: #8ab4f8;
+}
+
+#view-changelog-btn {
+  margin-top: 12px;
+}
+
+.changelog-modal {
+  width: 640px;
+}
+
+#changelog-entries {
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+#changelog-entries::-webkit-scrollbar { width: 6px; } /* Chromium */
+#changelog-entries::-webkit-scrollbar-track { background: transparent; }
+#changelog-entries::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+#changelog-entries::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); }
+
+.changelog-entry {
+  margin-bottom: 14px;
+}
+.changelog-entry:last-child {
+  margin-bottom: 0;
+}
+
+.changelog-version {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.changelog-date {
+  font-size: 11px;
+  font-weight: 400;
+  color: #80868b;
+}
+
+.changelog-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8ab4f8;
+  margin-top: 6px;
+}
+
+.changelog-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.changelog-list li {
+  font-size: 12px;
+  color: #e8eaed;
+  line-height: 1.5;
+  margin-bottom: 3px;
+}
+
 .todo-manage-empty {
   font-size: 12px;
   color: #80868b;
@@ -857,6 +963,11 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
   justify-content: center;
 }
 .todo-manage-item button:hover { background: rgba(255, 255, 255, 0.1); color: #e8eaed; }
+.todo-manage-item button.confirm,
+.todo-manage-item button.confirm:hover {
+  background: #d93025;
+  color: #fff;
+}
 
 .modal-field {
   margin-bottom: 10px;

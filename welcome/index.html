@@ -64,6 +64,10 @@
     <div class="menu-divider"></div>
 
     <button id="todo-manage-btn" class="menu-btn-small menu-btn-wide">To-do list&hellip;</button>
+
+    <div class="menu-divider"></div>
+
+    <button id="about-btn" class="menu-btn-small menu-btn-wide">About&hellip;</button>
   </div>
 
   <main>
@@ -132,7 +136,41 @@
     </div>
   </div>
 
+  <div id="about-overlay" class="modal-overlay hidden">
+    <div class="modal about-modal">
+      <div class="modal-title">About Shield Browser</div>
+      <div class="about-info">
+        <div class="about-app-name">Shield Browser</div>
+        <div class="about-version" id="about-version"></div>
+        <div class="about-description">
+          A minimal Chromium-based browser that always blocks ads and social media, blocks JavaScript and
+          cookies by default, and enforces a site whitelist.
+        </div>
+        <div class="about-meta">
+          <div>Author: Nikola</div>
+          <div>License: MIT</div>
+          <div>Homepage: <a href="https://maleniti.com/shield-browser" id="about-homepage-link">maleniti.com/shield-browser</a></div>
+        </div>
+      </div>
+      <button id="view-changelog-btn" class="menu-btn-small menu-btn-wide">View Change log</button>
+      <div class="modal-actions">
+        <button id="about-close" class="modal-cancel">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="changelog-overlay" class="modal-overlay hidden">
+    <div class="modal changelog-modal">
+      <div class="modal-title">Changelog</div>
+      <div id="changelog-entries"></div>
+      <div class="modal-actions">
+        <button id="changelog-close" class="modal-cancel">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="recurrence.js"></script>
+  <script src="changelog.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

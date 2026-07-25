@@ -1,4 +1,4 @@
-const { app, BrowserWindow, BrowserView, ipcMain, session, webContents, dialog } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, session, webContents, dialog, shell } = require('electron');
 const path = require('path');
 const url = require('url');
 
@@ -598,6 +598,14 @@ ipcMain.on('whitelist-host', (_e, hostname) => {
 });
 ipcMain.on('blacklist-host', (_e, hostname) => siteLists.addToBlacklist(hostname));
 ipcMain.handle('is-blocked-by-default', (_e, hostname) => !!classify(`https://${hostname}`));
+
+// Backs the About dialog's version display and homepage/license links --
+// external links open in the user's actual default browser (shell.openExternal)
+// rather than navigating a BrowserView away to them.
+ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.on('open-external', (_e, targetUrl) => {
+  if (/^https?:\/\//i.test(targetUrl)) shell.openExternal(targetUrl);
+});
 ipcMain.handle('get-site-lists', () => ({
   whitelist: siteLists.getWhitelist(),
   blacklist: siteLists.getBlacklist(),

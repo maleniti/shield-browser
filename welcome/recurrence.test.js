@@ -30,6 +30,26 @@ const everyTwoMonths = { dueDate: '2026-01-15', frequency: { type: 'months', int
 assert.ok(R.occursOn(everyTwoMonths, '2026-03-15'));
 assert.ok(!R.occursOn(everyTwoMonths, '2026-02-15'));
 
+// -- endDate ------------------------------------------------------------
+const dailyWithEnd = { dueDate: '2026-03-10', frequency: { type: 'days', interval: 1 }, endDate: '2026-03-20' };
+assert.ok(R.occursOn(dailyWithEnd, '2026-03-20'), 'occurs on the end date itself');
+assert.ok(!R.occursOn(dailyWithEnd, '2026-03-21'), 'no occurrence after the end date');
+assert.strictEqual(
+  R.mostRecentOccurrenceOnOrBefore(dailyWithEnd, '2026-03-25'),
+  '2026-03-20',
+  'a today past the end date clamps to the last occurrence on/before endDate, not endDate + drift'
+);
+assert.strictEqual(
+  R.mostRecentOccurrenceOnOrBefore(dailyWithEnd, '2026-03-15'),
+  '2026-03-15',
+  'today before the end date is unaffected'
+);
+
+const monthlyWithEnd = { dueDate: '2026-01-31', frequency: { type: 'months', interval: 1 }, endDate: '2026-02-28' };
+assert.ok(R.occursOn(monthlyWithEnd, '2026-02-28'));
+assert.ok(!R.occursOn(monthlyWithEnd, '2026-03-31'), 'the 3rd occurrence would be after endDate');
+assert.strictEqual(R.mostRecentOccurrenceOnOrBefore(monthlyWithEnd, '2026-06-01'), '2026-02-28');
+
 // -- mostRecentOccurrenceOnOrBefore -----------------------------------------
 assert.strictEqual(R.mostRecentOccurrenceOnOrBefore(once, '2026-03-15'), '2026-03-10', 'a missed one-off stays pending, doesn\'t vanish');
 assert.strictEqual(R.mostRecentOccurrenceOnOrBefore(once, '2026-03-01'), null, 'not due yet');
