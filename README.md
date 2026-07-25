@@ -49,13 +49,17 @@ flag is baked in instead.
 - **Social media** — navigating to a domain in `blocklists/social.js`
   (Facebook, Instagram, X/Twitter, TikTok, LinkedIn, Reddit, etc.) shows a
   blocked-page interstitial instead of loading the site.
-- **Ads/trackers** — requests to domains in `blocklists/ads.js` (Google/Amazon
-  ad networks, Criteo, Taboola, common analytics/tracking services, etc.) are
-  cancelled at the network level, on every tab, regardless of the JS/cookies
-  toggle.
+- **Ads/trackers** — matched against a bundled EasyList/EasyPrivacy filter
+  engine (`blocklists/adblock-engine.bin`, see `blocklists/adblockEngine.js`),
+  cancelled (or occasionally redirected to an inert stub, for filters that
+  specify one) at the network level, on every tab, regardless of the
+  JS/cookies toggle.
 
-Neither list is exposed in the UI. The only way to change what's blocked is
-editing those two files and restarting the app.
+Neither list is exposed in the UI. Social media is changed by editing
+`blocklists/social.js` and restarting the app; the ad/tracker engine is
+refreshed by running `node scripts/build-adblock-engine.js` (fetches the
+latest EasyList/EasyPrivacy from Ghostery's CDN and re-bundles it) and
+restarting.
 
 ## Site whitelist & blacklist
 
@@ -132,17 +136,14 @@ Builds an AppImage and a `.deb` into `dist/`.
 
 ## Known limitations
 
-- The ad list is a curated set of common ad/tracker domains, not a full
-  EasyList/EasyPrivacy — good for everyday browsing, not exhaustive.
+- The bundled EasyList/EasyPrivacy snapshot is only as current as the last
+  time `node scripts/build-adblock-engine.js` was run -- it isn't refreshed
+  automatically.
 - Cookie blocking works by stripping `Cookie`/`Set-Cookie` headers on the
   default (non-opted-in) session partition, rather than disabling storage
   entirely.
 - Shield opt-in state lives only in memory for the life of a tab; it isn't
   persisted per-origin.
-- A recurring task that's been missed for a while doesn't show one row per
-  missed day — it shows a single "carried over" row for its most recent
-  occurrence. Doing it clears that row; the next occurrence (whenever it
-  naturally falls) becomes the new pending one.
 - A monthly task due on the 31st clamps to the last day of shorter months
   (e.g. the 28th/29th in February).
 - The edit-mode-lockout message is a native `alert()`, not a themed dialog.

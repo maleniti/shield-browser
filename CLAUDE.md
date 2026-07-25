@@ -14,20 +14,23 @@ Tests are plain Node scripts (`node:assert`), one file per module, run directly 
 
 ```
 node blocklists/match.test.js
+node blocklists/adblockEngine.test.js
 node siteLists.test.js
 node welcome/recurrence.test.js
 node --check main.js        # syntax-check main.js after editing it
 ```
 
-Run all three test files plus the syntax check before considering a change to `main.js`, `siteLists.js`, `blocklists/match.js`, or `welcome/recurrence.js` complete — there's no CI wired up, this is the whole verification suite.
+Run all four test files plus the syntax check before considering a change to `main.js`, `siteLists.js`, `blocklists/match.js`, `blocklists/adblockEngine.js`, or `welcome/recurrence.js` complete — there's no CI wired up, this is the whole verification suite.
+
+`blocklists/adblock-engine.bin` (a bundled, EasyList/EasyPrivacy-based filter engine snapshot from `@ghostery/adblocker-electron`, committed to the repo so `npm start` works with no extra setup) is regenerated with `node scripts/build-adblock-engine.js` — run it and commit the updated binary to refresh ad/tracker coverage; it isn't fetched or refreshed automatically at runtime.
 
 `npm start` passes `--no-sandbox` directly because Chromium's setuid sandbox helper needs root ownership that a dev checkout doesn't set up. Packaged builds bake the same flag in differently: `.deb` via `package.json`'s `build.linux.executableArgs` (ends up in the desktop entry's `Exec=` line), and the AppImage via the `run-appimage.sh` wrapper script (AppImages have no desktop-entry hook, and the sandbox helper extracts to a fresh temp path every launch so it can't be `chown`/`chmod`'d once and forgotten).
 
 ## Architecture
 
-Single-user Electron browser (main process in `main.js`, ~580 lines, no framework) built around one idea: **every tab's network traffic goes through a `webRequest.onBeforeRequest` gate that decides allow/block per-request**, layered as (checked in this order, each layer overriding the ones after it):
+Single-user Electron browser (main process in `main.js`, ~650 lines, no framework) built around one idea: **every tab's network traffic goes through a `webRequest.onBeforeRequest` gate that decides allow/block per-request**, layered as (checked in this order, each layer overriding the ones after it):
 
-1. **Ad/social blocklists** (`blocklists/ads.js`, `blocklists/social.js`, matched via `blocklists/match.js`) — always active, on every partition, not user-configurable. Social hits get an interstitial (`blocklists/blockedPage.js`); ad hits are silently cancelled.
+1. **Ad/social blocklists** — social media is a curated domain list (`blocklists/social.js`, matched via `blocklists/match.js`), always active on every partition, not user-configurable; hits get an interstitial (`blocklists/blockedPage.js`). Ads/trackers are matched against a bundled EasyList/EasyPrivacy filter engine instead of a domain list (`blocklists/adblockEngine.js`, wraps `@ghostery/adblocker-electron`'s `FiltersEngine.match()` directly rather than its `enableBlockingInSession()` helper, which would register its own `webRequest.onBeforeRequest` and conflict with the gate below — Electron only allows one such listener per session); ad hits are silently cancelled (or redirected to an inert stub, for filters that specify one).
 2. **Focus mode** (`focusModeHosts` in `main.js`) — when a to-do task is overdue, narrows *everything* down to just that task's linked site groups, overriding the whitelist below entirely (`null` = no restriction, `[]` = total lockdown pending task selection — these are not interchangeable).
 3. **Whitelist/blacklist** (`siteLists.js`, persisted to `site-lists.json` in `app.getPath('userData')`) — default-deny for any site not on the whitelist. Direct user navigation (address bar, welcome-page search/link clicks) auto-whitelists and bypasses this gate (`markExplicitNavigation`/`consumeExplicitNavigation`); a page's own subresources/redirects don't. A site only gains "link host" status (permission to have *its* outbound requests prompt the user) by being explicitly added as a welcome-page shortcut — being whitelisted as someone else's dependency isn't enough (leaf sites can't cascade further). The prompt itself is a native `dialog.showMessageBox`, deduped per target hostname (`pendingDecisions`).
 

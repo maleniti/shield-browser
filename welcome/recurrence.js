@@ -34,30 +34,85 @@ function monthsBetween(isoA, isoB) {
 }
 
 // Does `task` have an occurrence exactly on `dateISO`?
+//
+// task.frequency shapes:
+//   { type: 'once' }
+//   { type: 'days', interval }
+//   { type: 'weeks', interval, weekdays?: number[] }  -- weekdays: 0(Sun)-6(Sat).
+//     If given (non-empty), occurs on those weekdays every `interval` weeks,
+//     counted from the Sunday of dueDate's own week (dueDate need not itself
+//     fall on one of the selected weekdays -- it's just the anchor for week
+//     boundaries and the interval count). If omitted, falls back to the
+//     original single-day-of-week behavior anchored to dueDate's own
+//     weekday, for backward compatibility with already-saved tasks.
+//   { type: 'months', interval, dayMode?, offset?, weekday?, ordinal? }
+//     dayMode 'day' (default/omitted): anchor to dueDate's day-of-month,
+//       clamped to the last day of shorter months (e.g. the 31st -> Feb 28).
+//     dayMode 'last': always the last day of the month.
+//     dayMode 'before-last': `offset` (0-3) days before the last day.
+//     dayMode 'weekday': the `ordinal`-th occurrence of `weekday` (0-6) in
+//       the month, where ordinal is 1-5, or the string 'last' for the final
+//       occurrence of that weekday in the month (some months have 4 of a
+//       given weekday, some have 5, so "last" isn't just ordinal 5).
 function occursOn(task, dateISO) {
   if (task.endDate && dateISO > task.endDate) return false;
   const diffDays = daysBetween(task.dueDate, dateISO);
   if (diffDays < 0) return false;
   const interval = Math.max(1, task.frequency.interval || 1);
+  const target = new Date(dateISO + 'T00:00:00');
+
   switch (task.frequency.type) {
     case 'once':
       return diffDays === 0;
+
     case 'days':
       return diffDays % interval === 0;
-    case 'weeks':
+
+    case 'weeks': {
+      const weekdays = task.frequency.weekdays;
+      if (weekdays && weekdays.length > 0) {
+        const due = new Date(task.dueDate + 'T00:00:00');
+        const dueWeekStart = addDays(due, -due.getDay());
+        const weekIndex = Math.floor(daysBetween(dateToISO(dueWeekStart), dateISO) / 7);
+        if (weekIndex < 0 || weekIndex % interval !== 0) return false;
+        return weekdays.includes(target.getDay());
+      }
       return diffDays % (interval * 7) === 0;
+    }
+
     case 'months': {
       const diffMonths = monthsBetween(task.dueDate, dateISO);
       if (diffMonths < 0 || diffMonths % interval !== 0) return false;
       const due = new Date(task.dueDate + 'T00:00:00');
-      const target = new Date(dateISO + 'T00:00:00');
+      const dayMode = task.frequency.dayMode || 'day';
+
+      if (dayMode === 'last') {
+        return target.getDate() === daysInMonth(target.getFullYear(), target.getMonth());
+      }
+      if (dayMode === 'before-last') {
+        const offset = Math.min(3, Math.max(0, task.frequency.offset || 0));
+        return target.getDate() === daysInMonth(target.getFullYear(), target.getMonth()) - offset;
+      }
+      if (dayMode === 'weekday') {
+        const { weekday, ordinal } = task.frequency;
+        if (target.getDay() !== weekday) return false;
+        if (ordinal === 'last') return addDays(target, 7).getMonth() !== target.getMonth();
+        const nth = Math.floor((target.getDate() - 1) / 7) + 1;
+        return nth === ordinal;
+      }
       const expectedDay = Math.min(due.getDate(), daysInMonth(target.getFullYear(), target.getMonth()));
       return target.getDate() === expectedDay;
     }
+
     default:
       return false;
   }
 }
+
+// Generous bound (~10 years of days) for the scans below -- not a real-world
+// limit, just a safety net against a pathological/corrupt task never
+// matching and looping forever.
+const MAX_SCAN_DAYS = 3660;
 
 // The most recent occurrence date <= todayISO, or null if the task's anchor
 // due date hasn't arrived yet. For 'once' tasks this is just the due date
@@ -68,42 +123,46 @@ function occursOn(task, dateISO) {
 // earlier than todayISO, the search is clamped to endDate instead, same as
 // if "today" were endDate, so a recurring task doesn't keep surfacing missed
 // occurrences past the date its recurrences were meant to stop.
+//
+// Implemented as a bounded backward scan via occursOn() rather than a
+// closed-form step calculation per frequency type: the weekday-of-month and
+// multi-weekday-per-week patterns don't reduce to simple arithmetic the way
+// "every N days" does, so one shared, easier-to-verify mechanism beats a
+// different formula for every case. Cheap enough for a to-do list's needs --
+// occursOn() is O(1), and real gaps between occurrences are at most a few
+// months even for exotic patterns (e.g. a 5th-weekday-of-month that skips
+// short months).
 function mostRecentOccurrenceOnOrBefore(task, todayISO) {
   const searchISO = task.endDate && task.endDate < todayISO ? task.endDate : todayISO;
-  const diffDays = daysBetween(task.dueDate, searchISO);
-  if (diffDays < 0) return null;
-  const interval = Math.max(1, task.frequency.interval || 1);
-  switch (task.frequency.type) {
-    case 'once':
-      return task.dueDate;
-    case 'days': {
-      const stepIndex = Math.floor(diffDays / interval);
-      return dateToISO(addDays(new Date(task.dueDate + 'T00:00:00'), stepIndex * interval));
-    }
-    case 'weeks': {
-      const stepDays = interval * 7;
-      const stepIndex = Math.floor(diffDays / stepDays);
-      return dateToISO(addDays(new Date(task.dueDate + 'T00:00:00'), stepIndex * stepDays));
-    }
-    case 'months': {
-      const due = new Date(task.dueDate + 'T00:00:00');
-      const search = new Date(searchISO + 'T00:00:00');
-      const occurrenceForStep = (stepIndex) => {
-        const d = new Date(due.getFullYear(), due.getMonth() + stepIndex * interval, 1);
-        d.setDate(Math.min(due.getDate(), daysInMonth(d.getFullYear(), d.getMonth())));
-        return d;
-      };
-      // monthsBetween ignores day-of-month, so e.g. Jan-31 -> Feb (clamped to
-      // the 28th) overshoots for any search date earlier than the 28th; step
-      // back one interval when that happens.
-      let stepIndex = Math.floor(monthsBetween(task.dueDate, searchISO) / interval);
-      let occurrence = occurrenceForStep(stepIndex);
-      if (occurrence > search) occurrence = occurrenceForStep(--stepIndex);
-      return stepIndex < 0 ? null : dateToISO(occurrence);
-    }
-    default:
-      return null;
+  if (daysBetween(task.dueDate, searchISO) < 0) return null;
+  if (task.frequency.type === 'once') return task.dueDate;
+
+  let cursor = searchISO;
+  for (let i = 0; i < MAX_SCAN_DAYS; i++) {
+    if (occursOn(task, cursor)) return cursor;
+    if (cursor === task.dueDate) return null;
+    cursor = dateToISO(addDays(new Date(cursor + 'T00:00:00'), -1));
   }
+  return null;
+}
+
+// The next occurrence strictly after afterISO, or null if there isn't one
+// (a 'once' task's single occurrence is already on/before afterISO, or
+// task.endDate has been reached). Complements
+// mostRecentOccurrenceOnOrBefore -- used by the to-do list's "next
+// recurrence" view to show what's coming up once the current one is done,
+// rather than only what's due now or overdue. Same bounded-scan approach.
+function nextOccurrenceAfter(task, afterISO) {
+  if (daysBetween(task.dueDate, afterISO) < 0) return task.dueDate; // hasn't started yet -- its first occurrence is next
+  if (task.frequency.type === 'once') return null; // its one occurrence is already on/before afterISO
+
+  let cursor = dateToISO(addDays(new Date(afterISO + 'T00:00:00'), 1));
+  for (let i = 0; i < MAX_SCAN_DAYS; i++) {
+    if (task.endDate && cursor > task.endDate) return null;
+    if (occursOn(task, cursor)) return cursor;
+    cursor = dateToISO(addDays(new Date(cursor + 'T00:00:00'), 1));
+  }
+  return null;
 }
 
 function isOverdue(task, occurrenceDateISO, now) {
@@ -121,6 +180,7 @@ const api = {
   monthsBetween,
   occursOn,
   mostRecentOccurrenceOnOrBefore,
+  nextOccurrenceAfter,
   isOverdue,
 };
 

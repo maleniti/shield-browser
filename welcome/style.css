@@ -1,6 +1,13 @@
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
+  /* Tells Chromium to render native controls we don't fully style ourselves
+     (a <select>'s dropdown popup, date/time picker widgets) in dark mode,
+     instead of the OS's default light theme clashing against this app's
+     dark UI -- the closed <select> box itself is already styled via
+     .modal-input, but the open dropdown list is native UI outside CSS's
+     reach otherwise. */
+  color-scheme: dark;
   /* Exactly the viewport height (not min-height) so the page itself never
      scrolls -- every section below is sized to fit within it, and any
      overflow inside a section (groups, todo list) scrolls internally via its
@@ -57,6 +64,7 @@ main {
 }
 
 .todo-section {
+  position: relative;
   width: 100%;
   margin-top: 24px;
   padding: 14px 16px;
@@ -80,6 +88,69 @@ main {
   flex-direction: column;
 }
 .todo-section.hidden { display: none; }
+
+.todo-view-toggle-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #9aa0a6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+/* In the to-do manage modal, the toggle sits inline next to the title
+   instead of the corner -- that corner slot is the modal's own Close
+   button there (.modal-close-btn), to avoid the two being mistaken for
+   each other. */
+#todo-manage-view-toggle-btn {
+  position: static;
+}
+
+.modal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.modal-title-row .modal-title {
+  margin-bottom: 0;
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #9aa0a6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #e8eaed;
+}
+
+.todo-view-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #e8eaed;
+}
 
 #todo-viewport {
   flex: 1;
@@ -789,6 +860,7 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
 }
 
 .todo-manage-modal {
+  position: relative;
   width: 380px;
 }
 
@@ -816,7 +888,16 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
   max-height: 280px;
   overflow-y: auto;
   margin-bottom: 10px;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
+#todo-manage-list::-webkit-scrollbar { width: 6px; } /* Chromium */
+#todo-manage-list::-webkit-scrollbar-track { background: transparent; }
+#todo-manage-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+#todo-manage-list::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); }
 
 .about-modal {
   width: 480px;
@@ -972,6 +1053,9 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
 .modal-field {
   margin-bottom: 10px;
 }
+.modal-field-hidden {
+  display: none;
+}
 
 .modal-field label {
   display: block;
@@ -991,6 +1075,17 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
   font-size: 12px;
   outline: none;
   transition: border-color 0.2s;
+}
+/* color-scheme: dark (set on html/body) gets a <select>'s dropdown popup
+   most of the way to matching the app, but Chromium still renders
+   unselected <option> rows with its own mid-gray, not this app's actual
+   dark surface color -- <option> can't use the rest of the app's rgba()
+   transparency (the popup isn't drawn over our page background), so this
+   is the closest solid-color match to it (same family as .modal/
+   .menu-dropdown's rgba(32, 33, 36, ...)). */
+option {
+  background-color: #202124;
+  color: #e8eaed;
 }
 .modal-input:focus { border-color: #8ab4f8; }
 .modal-input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.6; }

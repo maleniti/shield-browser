@@ -4,7 +4,15 @@ const url = require('url');
 
 const { classify } = require('./blocklists/match');
 const { renderBlockedPage } = require('./blocklists/blockedPage');
+const adblockEngine = require('./blocklists/adblockEngine');
 const siteLists = require('./siteLists');
+
+// "Always blocked" (social OR ad/tracker) for the call sites that only have
+// a bare URL/hostname to go on, not full webRequest details -- direct
+// navigation, the whitelist-add guard, and the renderer's pre-check.
+function isAlwaysBlocked(requestUrl) {
+  return !!classify(requestUrl) || adblockEngine.matchUrl(requestUrl);
+}
 
 // On Ubuntu 24.04+, AppArmor restricts unprivileged user namespaces, which
 // blocks Chromium's modern namespace-based sandbox and forces a fallback to
@@ -181,9 +189,11 @@ function isAllowedInFocusMode(targetHostname, requestingHostname) {
   return isTaskSite(requestingHostname) && siteLists.isWhitelisted(targetHostname);
 }
 
-// Ad + social blocking is wired into every session partition and is not
-// conditioned on anything user-configurable: there is no IPC channel or UI
-// affordance that disables it. On top of that, 'blocked'/'allowed' partitions
+// Ad/tracker (bundled EasyList/EasyPrivacy engine, see adblockEngine.js) +
+// social (blocklists/social.js) blocking is wired into every session
+// partition and is not conditioned on anything user-configurable: there is
+// no IPC channel or UI affordance that disables it. On top of that,
+// 'blocked'/'allowed' partitions
 // (normal browsing tabs, not the welcome page) enforce a default-deny
 // whitelist for cross-site requests: allowed if first-party, explicitly
 // whitelisted, or approved via the popup (only ever offered when the
@@ -211,6 +221,15 @@ function installNetworkBlocking(sess, { enforceWhitelist }) {
         return;
       }
       return callback({ cancel: true });
+    }
+
+    // Some filters replace a request with an inert stub (e.g. a 1x1
+    // transparent image) instead of cancelling it outright -- honor that via
+    // redirectURL when present, since some ad slots handle a straight
+    // cancellation more visibly/broken than a substituted empty response.
+    const adMatch = adblockEngine.matchRequest(details);
+    if (adMatch.match) {
+      return callback(adMatch.redirectURL ? { redirectURL: adMatch.redirectURL } : { cancel: true });
     }
 
     const targetHostname = safeHostname(details.url);
@@ -403,7 +422,7 @@ function handleDirectNavigation(targetUrl) {
   if (focusModeHosts !== null) return;
   const hostname = safeHostname(targetUrl);
   if (!hostname) return;
-  if (classify(targetUrl)) return; // still fully blocked; no override
+  if (isAlwaysBlocked(targetUrl)) return; // still fully blocked; no override
   const alreadyWhitelisted = siteLists.isWhitelisted(hostname);
   siteLists.addToWhitelist(hostname);
   if (!alreadyWhitelisted) offerAddLinkToWelcomePages(hostname);
@@ -590,14 +609,14 @@ ipcMain.on('sync-link-hosts', (_e, hostnames) => siteLists.setLinkHosts(hostname
 // through, rather than trusting each renderer-side caller to have already
 // checked. (handleDirectNavigation and requestAccessDecision call
 // siteLists.addToWhitelist directly from within this process instead of
-// through here, but both already exempt classify() matches earlier in the
-// same flow, so they can't reach this misleading state either.)
+// through here, but both already exempt isAlwaysBlocked() matches earlier in
+// the same flow, so they can't reach this misleading state either.)
 ipcMain.on('whitelist-host', (_e, hostname) => {
-  if (classify(`https://${hostname}`)) return;
+  if (isAlwaysBlocked(`https://${hostname}`)) return;
   siteLists.addToWhitelist(hostname);
 });
 ipcMain.on('blacklist-host', (_e, hostname) => siteLists.addToBlacklist(hostname));
-ipcMain.handle('is-blocked-by-default', (_e, hostname) => !!classify(`https://${hostname}`));
+ipcMain.handle('is-blocked-by-default', (_e, hostname) => isAlwaysBlocked(`https://${hostname}`));
 
 // Backs the About dialog's version display and homepage/license links --
 // external links open in the user's actual default browser (shell.openExternal)
@@ -624,6 +643,7 @@ ipcMain.on('window-close', () => mainWindow.close());
 
 app.whenReady().then(() => {
   siteLists.load(app.getPath('userData'));
+  adblockEngine.load();
   createWindow();
 });
 

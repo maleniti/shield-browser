@@ -35,8 +35,16 @@
     "linux": {
       "icon": "build/icon.png",
       "category": "Network;WebBrowser;",
-      "target": ["AppImage", "deb"],
-      "executableArgs": ["--no-sandbox"]
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "executableArgs": [
+        "--no-sandbox"
+      ]
     }
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.18.1"
   }
 }

@@ -1,11 +1,13 @@
 const SOCIAL_DOMAINS = require('./social');
-const AD_DOMAINS = require('./ads');
 
 function hostMatches(hostname, list) {
   hostname = hostname.toLowerCase();
   return list.some((d) => hostname === d || hostname.endsWith('.' + d));
 }
 
+// Social media only -- ad/tracker matching moved to the bundled
+// EasyList/EasyPrivacy engine (see adblockEngine.js) for far broader
+// coverage than a hand-curated domain list could offer.
 function classify(requestUrl) {
   let hostname;
   try {
@@ -14,7 +16,6 @@ function classify(requestUrl) {
     return null;
   }
   if (hostMatches(hostname, SOCIAL_DOMAINS)) return { kind: 'social', hostname };
-  if (hostMatches(hostname, AD_DOMAINS)) return { kind: 'ad', hostname };
   return null;
 }
 

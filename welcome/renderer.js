@@ -202,18 +202,51 @@ function showFormModal(title, fields, opts = {}) {
       }
 
       modalFields.appendChild(wrap);
-      return { getValue, name: field.name, required: field.required !== false, isArray: field.type === 'checkboxes' };
+      return {
+        getValue,
+        name: field.name,
+        required: field.required !== false,
+        isArray: field.type === 'checkboxes',
+        wrap,
+        showIf: field.showIf,
+      };
     });
+
+    // Fields with a `showIf(values)` predicate (e.g. a monthly-only option
+    // that's irrelevant unless "Repeats" is set to monthly) are hidden/shown
+    // as any field changes, rather than always showing every field
+    // regardless of the current selection. A hidden field's own
+    // required-ness is ignored on submit, but its value is still included in
+    // the result -- so switching frequency back and forth doesn't lose
+    // whatever was entered in a temporarily-hidden field.
+    function currentValues() {
+      const values = {};
+      for (const f of fieldGetters) values[f.name] = f.getValue();
+      return values;
+    }
+
+    function updateVisibility() {
+      if (!fieldGetters.some((f) => f.showIf)) return; // no conditional fields, skip the work
+      const values = currentValues();
+      for (const f of fieldGetters) {
+        if (f.showIf) f.wrap.classList.toggle('modal-field-hidden', !f.showIf(values));
+      }
+    }
 
     modalOverlay.classList.remove('hidden');
     interactiveEls[0].focus();
     if (interactiveEls[0].select) interactiveEls[0].select();
+    updateVisibility();
 
     function finish(result) {
       modalOverlay.classList.add('hidden');
       modalOk.onclick = null;
       modalCancel.onclick = null;
-      interactiveEls.forEach((el) => { el.onkeydown = null; });
+      interactiveEls.forEach((el) => {
+        el.onkeydown = null;
+        el.onchange = null;
+        el.oninput = null;
+      });
       resolve(result);
     }
 
@@ -221,7 +254,8 @@ function showFormModal(title, fields, opts = {}) {
       const result = {};
       for (const f of fieldGetters) {
         const value = f.getValue();
-        if (f.required && (f.isArray ? value.length === 0 : !value)) return;
+        const visible = !f.wrap.classList.contains('modal-field-hidden');
+        if (visible && f.required && (f.isArray ? value.length === 0 : !value)) return;
         result[f.name] = value;
       }
       finish(result);
@@ -230,6 +264,8 @@ function showFormModal(title, fields, opts = {}) {
     modalOk.onclick = submit;
     modalCancel.onclick = () => finish(null);
     interactiveEls.forEach((el) => {
+      el.onchange = updateVisibility;
+      el.oninput = updateVisibility;
       el.onkeydown = (e) => {
         if (e.key === 'Enter' && el.tagName !== 'TEXTAREA') submit();
         if (e.key === 'Escape') {
@@ -994,37 +1030,81 @@ function encodeFrequency(freq) {
   return 'custom-' + freq.type;
 }
 
-function decodeFrequency(frequencyType, intervalStr) {
+// `extra` carries the task form's weekly/monthly sub-fields (weekdays,
+// monthlyMode, monthlyOffset, monthlyWeekday, monthlyOrdinal) -- folded into
+// the decoded frequency only when they're actually relevant to the chosen
+// type, so e.g. leftover monthly fields from switching frequencyType back
+// and forth don't leak into a plain weekly/daily task.
+function decodeFrequency(frequencyType, intervalStr, extra = {}) {
   const interval = Math.max(1, parseInt(intervalStr, 10) || 1);
-  switch (frequencyType) {
-    case 'once':
-      return { type: 'once', interval: 1 };
-    case 'daily':
-      return { type: 'days', interval: 1 };
-    case 'weekly':
-      return { type: 'weeks', interval: 1 };
-    case 'monthly':
-      return { type: 'months', interval: 1 };
-    case 'custom-days':
-      return { type: 'days', interval };
-    case 'custom-weeks':
-      return { type: 'weeks', interval };
-    case 'custom-months':
-      return { type: 'months', interval };
-    default:
-      return { type: 'days', interval: 1 };
+  const base = (() => {
+    switch (frequencyType) {
+      case 'once':
+        return { type: 'once', interval: 1 };
+      case 'daily':
+        return { type: 'days', interval: 1 };
+      case 'weekly':
+        return { type: 'weeks', interval: 1 };
+      case 'monthly':
+        return { type: 'months', interval: 1 };
+      case 'custom-days':
+        return { type: 'days', interval };
+      case 'custom-weeks':
+        return { type: 'weeks', interval };
+      case 'custom-months':
+        return { type: 'months', interval };
+      default:
+        return { type: 'days', interval: 1 };
+    }
+  })();
+
+  if (base.type === 'weeks' && extra.weekdays && extra.weekdays.length > 0) {
+    base.weekdays = extra.weekdays.map(Number).sort((a, b) => a - b);
   }
+  if (base.type === 'months' && extra.monthlyMode && extra.monthlyMode !== 'day') {
+    base.dayMode = extra.monthlyMode;
+    if (extra.monthlyMode === 'before-last') {
+      base.offset = Math.min(3, Math.max(0, parseInt(extra.monthlyOffset, 10) || 0));
+    } else if (extra.monthlyMode === 'weekday') {
+      base.weekday = Number(extra.monthlyWeekday);
+      base.ordinal = extra.monthlyOrdinal === 'last' ? 'last' : parseInt(extra.monthlyOrdinal, 10);
+    }
+  }
+  return base;
 }
 
+const WEEKDAY_SHORT_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const ORDINAL_LABELS = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', last: 'last' };
+
 function describeTaskSchedule(task) {
-  const freqLabels = {
-    once: 'Once',
-    days: task.frequency.interval === 1 ? 'Daily' : `Every ${task.frequency.interval} days`,
-    weeks: task.frequency.interval === 1 ? 'Weekly' : `Every ${task.frequency.interval} weeks`,
-    months: task.frequency.interval === 1 ? 'Monthly' : `Every ${task.frequency.interval} months`,
-  };
-  const base = `${task.dueDate} ${task.dueTime} · ${freqLabels[task.frequency.type]}`;
-  return task.endDate ? `${base} until ${task.endDate}` : base;
+  const freq = task.frequency;
+  let label;
+  if (freq.type === 'once') {
+    label = 'Once';
+  } else if (freq.type === 'days') {
+    label = freq.interval === 1 ? 'Daily' : `Every ${freq.interval} days`;
+  } else if (freq.type === 'weeks') {
+    const base = freq.interval === 1 ? 'Weekly' : `Every ${freq.interval} weeks`;
+    label =
+      freq.weekdays && freq.weekdays.length > 0
+        ? `${base} on ${freq.weekdays.map((d) => WEEKDAY_SHORT_NAMES[d]).join('/')}`
+        : base;
+  } else if (freq.type === 'months') {
+    const base = freq.interval === 1 ? 'Monthly' : `Every ${freq.interval} months`;
+    if (freq.dayMode === 'last') {
+      label = `${base}, last day`;
+    } else if (freq.dayMode === 'before-last') {
+      label = freq.offset === 0 ? `${base}, last day` : `${base}, ${freq.offset} day(s) before last`;
+    } else if (freq.dayMode === 'weekday') {
+      label = `${base}, ${ORDINAL_LABELS[freq.ordinal]} ${WEEKDAY_SHORT_NAMES[freq.weekday]}`;
+    } else {
+      label = base;
+    }
+  } else {
+    label = '';
+  }
+  const scheduleBase = `${task.dueDate} ${task.dueTime} · ${label}`;
+  return task.endDate ? `${scheduleBase} until ${task.endDate}` : scheduleBase;
 }
 
 const FREQUENCY_OPTIONS = [
@@ -1036,6 +1116,45 @@ const FREQUENCY_OPTIONS = [
   { value: 'custom-weeks', label: 'Every N weeks' },
   { value: 'custom-months', label: 'Every N months' },
 ];
+
+const WEEKDAY_CHECKBOX_OPTIONS = [
+  { value: '0', label: 'Sun' },
+  { value: '1', label: 'Mon' },
+  { value: '2', label: 'Tue' },
+  { value: '3', label: 'Wed' },
+  { value: '4', label: 'Thu' },
+  { value: '5', label: 'Fri' },
+  { value: '6', label: 'Sat' },
+];
+
+const WEEKDAY_SELECT_OPTIONS = [
+  { value: '0', label: 'Sunday' },
+  { value: '1', label: 'Monday' },
+  { value: '2', label: 'Tuesday' },
+  { value: '3', label: 'Wednesday' },
+  { value: '4', label: 'Thursday' },
+  { value: '5', label: 'Friday' },
+  { value: '6', label: 'Saturday' },
+];
+
+const MONTHLY_MODE_OPTIONS = [
+  { value: 'day', label: 'Same day of month as due date' },
+  { value: 'last', label: 'Last day of month' },
+  { value: 'before-last', label: 'N days before last day of month' },
+  { value: 'weekday', label: 'Nth weekday of month' },
+];
+
+const ORDINAL_OPTIONS = [
+  { value: '1', label: '1st' },
+  { value: '2', label: '2nd' },
+  { value: '3', label: '3rd' },
+  { value: '4', label: '4th' },
+  { value: '5', label: '5th' },
+  { value: 'last', label: 'Last' },
+];
+
+const isWeeklyFrequencyType = (frequencyType) => frequencyType === 'weekly' || frequencyType === 'custom-weeks';
+const isMonthlyFrequencyType = (frequencyType) => frequencyType === 'monthly' || frequencyType === 'custom-months';
 
 async function openTaskForm(existingTask) {
   const groupOptions = groups.map((g) => ({ value: g.id, label: g.name }));
@@ -1071,6 +1190,46 @@ async function openTaskForm(existingTask) {
         required: false,
       },
       {
+        name: 'weekdays',
+        label: "Also recur on these days (weekly only; leave blank to just use the due date's weekday)",
+        type: 'checkboxes',
+        value: existingTask && existingTask.frequency.weekdays ? existingTask.frequency.weekdays.map(String) : [],
+        options: WEEKDAY_CHECKBOX_OPTIONS,
+        required: false,
+        showIf: (v) => isWeeklyFrequencyType(v.frequencyType),
+      },
+      {
+        name: 'monthlyMode',
+        label: 'Monthly pattern',
+        type: 'select',
+        value: existingTask ? existingTask.frequency.dayMode || 'day' : 'day',
+        options: MONTHLY_MODE_OPTIONS,
+        showIf: (v) => isMonthlyFrequencyType(v.frequencyType),
+      },
+      {
+        name: 'monthlyOffset',
+        label: 'Days before last day of month (0-3)',
+        value: existingTask && existingTask.frequency.offset != null ? String(existingTask.frequency.offset) : '0',
+        required: false,
+        showIf: (v) => isMonthlyFrequencyType(v.frequencyType) && v.monthlyMode === 'before-last',
+      },
+      {
+        name: 'monthlyWeekday',
+        label: 'Day of week',
+        type: 'select',
+        value: existingTask && existingTask.frequency.weekday != null ? String(existingTask.frequency.weekday) : '1',
+        options: WEEKDAY_SELECT_OPTIONS,
+        showIf: (v) => isMonthlyFrequencyType(v.frequencyType) && v.monthlyMode === 'weekday',
+      },
+      {
+        name: 'monthlyOrdinal',
+        label: 'Which occurrence',
+        type: 'select',
+        value: existingTask && existingTask.frequency.ordinal != null ? String(existingTask.frequency.ordinal) : '1',
+        options: ORDINAL_OPTIONS,
+        showIf: (v) => isMonthlyFrequencyType(v.frequencyType) && v.monthlyMode === 'weekday',
+      },
+      {
         name: 'endDate',
         label: 'End date (optional, recurring tasks only -- last recurrence on or before this date)',
         type: 'date',
@@ -1096,7 +1255,7 @@ async function openTaskForm(existingTask) {
     return;
   }
 
-  const frequency = decodeFrequency(result.frequencyType, result.interval);
+  const frequency = decodeFrequency(result.frequencyType, result.interval, result);
   if (existingTask) {
     existingTask.name = result.name;
     existingTask.description = result.description;
@@ -1179,6 +1338,81 @@ function computeTodoDisplayItems() {
   return items;
 }
 
+// "Next recurrence" view: one entry per task for whatever's next -- its
+// current pending occurrence (today/carried-over, same as the "pending"
+// view) if there is one, otherwise the occurrence after it (once today's is
+// completed, or before its very first one if it hasn't started yet). A task
+// that occurs tomorrow still gets a separate preview there after 6pm even
+// when today's is still pending, same as the "pending" view -- deduped
+// against whatever's already been added for that date, so it doesn't show
+// twice once today's occurrence is actually completed.
+function computeNextRecurrenceItems() {
+  const now = new Date();
+  const todayISO = Recurrence.dateToISO(now);
+  const tomorrowISO = Recurrence.dateToISO(Recurrence.addDays(now, 1));
+  const items = [];
+
+  for (const task of tasks) {
+    const recentDate = Recurrence.mostRecentOccurrenceOnOrBefore(task, todayISO);
+    if (recentDate && !task.completions[recentDate]) {
+      items.push({
+        task,
+        occurrenceDate: recentDate,
+        completed: false,
+        overdue: Recurrence.isOverdue(task, recentDate, now),
+        kind: recentDate === todayISO ? 'today' : 'carried-over',
+      });
+    } else {
+      // Today's occurrence, if that's what just got completed, still shows
+      // (crossed out) alongside whatever's next -- confirms what was just
+      // checked off without it just vanishing. Not done for older completed
+      // carried-over occurrences, just today's, so the view doesn't fill up
+      // with stale checkmarks.
+      if (recentDate === todayISO) {
+        items.push({ task, occurrenceDate: recentDate, completed: true, overdue: false, kind: 'today' });
+      }
+
+      const nextDate = recentDate === null ? task.dueDate : Recurrence.nextOccurrenceAfter(task, recentDate);
+      if (nextDate) {
+        items.push({
+          task,
+          occurrenceDate: nextDate,
+          completed: false,
+          overdue: false,
+          kind: nextDate === todayISO ? 'today' : nextDate === tomorrowISO ? 'tomorrow' : 'upcoming',
+        });
+      }
+    }
+  }
+
+  if (now.getHours() >= 18) {
+    for (const task of tasks) {
+      const alreadyShown = items.some((i) => i.task.id === task.id && i.occurrenceDate === tomorrowISO);
+      if (!alreadyShown && Recurrence.occursOn(task, tomorrowISO)) {
+        items.push({ task, occurrenceDate: tomorrowISO, completed: false, overdue: false, kind: 'tomorrow' });
+      }
+    }
+  }
+
+  return items;
+}
+
+// Persisted across restarts and app versions (localStorage survives both).
+// Deliberately independent of hasOverdueIncompleteTask()/focus-mode below,
+// which always use the "pending" computation regardless of this toggle --
+// which tasks are actually overdue isn't a display preference.
+const TODO_VIEW_MODE_KEY = 'shield-browser-todo-view-mode';
+
+function loadTodoViewMode() {
+  return localStorage.getItem(TODO_VIEW_MODE_KEY) === 'next-recurrence' ? 'next-recurrence' : 'pending';
+}
+
+let todoViewMode = loadTodoViewMode();
+
+function saveTodoViewMode() {
+  localStorage.setItem(TODO_VIEW_MODE_KEY, todoViewMode);
+}
+
 function hasOverdueIncompleteTask() {
   return computeTodoDisplayItems().some((item) => item.overdue && !item.completed);
 }
@@ -1210,6 +1444,29 @@ const todoListEl = document.getElementById('todo-list');
 const todoViewportEl = document.getElementById('todo-viewport');
 const todoScrollUpBtn = document.getElementById('todo-scroll-up');
 const todoScrollDownBtn = document.getElementById('todo-scroll-down');
+const todoViewToggleBtn = document.getElementById('todo-view-toggle-btn');
+
+const PENDING_VIEW_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M9 16.2l-3.5-3.5L4 14.2l5 5 11-11-1.5-1.5z"/></svg>';
+const NEXT_RECURRENCE_VIEW_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M17 1l4 4-4 4V6H7a4 4 0 0 0-4 4v1H1v-1a6 6 0 0 1 6-6h10V1zm-10 22l-4-4 4-4v3h10a4 4 0 0 0 4-4v-1h2v1a6 6 0 0 1-6 6H7v3z"/></svg>';
+
+function updateTodoViewToggleButton() {
+  if (todoViewMode === 'next-recurrence') {
+    todoViewToggleBtn.innerHTML = NEXT_RECURRENCE_VIEW_ICON;
+    todoViewToggleBtn.title = 'Showing: next recurrence of every task -- click to switch to pending/overdue tasks';
+  } else {
+    todoViewToggleBtn.innerHTML = PENDING_VIEW_ICON;
+    todoViewToggleBtn.title = 'Showing: pending/overdue tasks -- click to switch to next recurrence of every task';
+  }
+}
+
+todoViewToggleBtn.onclick = () => {
+  todoViewMode = todoViewMode === 'next-recurrence' ? 'pending' : 'next-recurrence';
+  saveTodoViewMode();
+  updateTodoViewToggleButton();
+  renderTodo();
+};
 
 // Same up/down-by-one-row approach as the link groups (#groups-viewport),
 // except a "row" here is trivially one task -- to-dos are a single column,
@@ -1271,6 +1528,8 @@ function describeDayLabel(dateISO, todayISO) {
 }
 
 function renderTodo() {
+  updateTodoViewToggleButton();
+
   if (tasks.length === 0) {
     todoSectionEl.classList.remove('hidden');
     renderTodoEmptyState();
@@ -1279,15 +1538,13 @@ function renderTodo() {
     return;
   }
 
-  const items = computeTodoDisplayItems();
-
-  if (items.length === 0) {
-    todoSectionEl.classList.add('hidden');
-    todoListEl.innerHTML = '';
-    updateFocusMode([]);
-    return;
-  }
+  // Stays visible once there are any tasks at all, even if none happen to be
+  // due today/tomorrow right now -- otherwise the view-mode toggle itself
+  // would be unreachable, and "next recurrence" mode specifically exists to
+  // show tasks that aren't due today/tomorrow.
   todoSectionEl.classList.remove('hidden');
+
+  const items = todoViewMode === 'next-recurrence' ? computeNextRecurrenceItems() : computeTodoDisplayItems();
 
   const pendingOverdue = items.filter((item) => item.overdue && !item.completed);
   if (pendingOverdue.length === 1) {
@@ -1325,7 +1582,7 @@ function renderTodo() {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = item.completed;
-      checkbox.disabled = item.kind === 'tomorrow';
+      checkbox.disabled = item.kind === 'tomorrow' || item.kind === 'upcoming';
       checkbox.onclick = (e) => {
         e.stopPropagation();
         toggleTaskCompletion(item.task, item.occurrenceDate);
@@ -1378,9 +1635,47 @@ function renderTodo() {
 
 const todoManageOverlay = document.getElementById('todo-manage-overlay');
 const todoManageListEl = document.getElementById('todo-manage-list');
+const todoManageViewToggleBtn = document.getElementById('todo-manage-view-toggle-btn');
+
+// A recurring task whose series has ended (endDate passed) and whose last
+// occurrence (on/before endDate) is marked done -- nothing more will ever
+// come of it, so "active only" hides it to declutter a long-lived list.
+function isTaskDoneAndEnded(task, todayISO) {
+  if (!task.endDate || task.endDate >= todayISO) return false;
+  const lastOccurrence = Recurrence.mostRecentOccurrenceOnOrBefore(task, todayISO);
+  return !!lastOccurrence && !!task.completions[lastOccurrence];
+}
+
+const ALL_TASKS_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M4 6h16v2H4zM4 11h16v2H4zM4 16h16v2H4z"/></svg>';
+const ACTIVE_ONLY_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>';
+
+let todoManageViewMode = 'all'; // not persisted -- resets to "all" each session, like edit mode
+
+function updateTodoManageViewToggleButton() {
+  if (todoManageViewMode === 'active') {
+    todoManageViewToggleBtn.innerHTML = ACTIVE_ONLY_ICON;
+    todoManageViewToggleBtn.title = 'Showing: active tasks only (hiding completed tasks past their end date) -- click to show all tasks';
+  } else {
+    todoManageViewToggleBtn.innerHTML = ALL_TASKS_ICON;
+    todoManageViewToggleBtn.title = 'Showing: all tasks -- click to hide completed tasks past their end date';
+  }
+}
+
+todoManageViewToggleBtn.onclick = () => {
+  todoManageViewMode = todoManageViewMode === 'active' ? 'all' : 'active';
+  renderTodoManageList();
+};
 
 function renderTodoManageList() {
+  updateTodoManageViewToggleButton();
   todoManageListEl.innerHTML = '';
+
+  const todayISO = Recurrence.dateToISO(new Date());
+  const visibleTasks =
+    todoManageViewMode === 'active' ? tasks.filter((t) => !isTaskDoneAndEnded(t, todayISO)) : tasks;
+
   if (tasks.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'todo-manage-empty';
@@ -1388,8 +1683,15 @@ function renderTodoManageList() {
     todoManageListEl.appendChild(empty);
     return;
   }
+  if (visibleTasks.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'todo-manage-empty';
+    empty.textContent = 'No active tasks -- everything is completed and past its end date.';
+    todoManageListEl.appendChild(empty);
+    return;
+  }
 
-  for (const task of tasks) {
+  for (const task of visibleTasks) {
     const row = document.createElement('div');
     row.className = 'todo-manage-item';
 

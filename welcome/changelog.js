@@ -10,6 +10,22 @@
 // via a plain <script> include in the welcome page.
 const CHANGELOG = [
   {
+    version: null,
+    label: 'Unreleased',
+    date: null,
+    added: [
+      'To-do list: a toggle (upper-right of the panel) switches between the current "pending/overdue" view and a "next recurrence" view showing every task grouped under its next due date -- persisted across restarts. Checking a task off immediately reveals its next occurrence; today\'s completed occurrence still shows crossed out alongside it if that\'s what was just done.',
+      'The to-do list panel now stays visible whenever any tasks exist, even if none are due today/tomorrow, so the view-mode toggle stays reachable.',
+      'To-do manage modal: a toggle (upper-right) hides tasks that are both completed and past their end date, decluttering a long-lived list without deleting anything.',
+      'Recurring tasks support an optional end date, and the manage-list scrollbar (like the whitelist/blacklist one) is restyled to match the app instead of the OS default.',
+      'Weekly tasks can recur on specific days of the week (e.g. Mon/Wed/Fri) instead of just the due date\'s own weekday.',
+      'Monthly tasks can recur on the last day of the month, N days before the last day (0-3), or the 1st/2nd/3rd/4th/5th/last occurrence of a given weekday (e.g. "last Friday", "3rd Tuesday") -- in addition to the existing "same day of month as the due date" pattern.',
+    ],
+    fixed: [
+      "Ads/trackers are now matched against a bundled EasyList/EasyPrivacy filter engine (@ghostery/adblocker-electron) instead of a small curated domain list -- far broader coverage, refreshed via scripts/build-adblock-engine.js.",
+    ],
+  },
+  {
     version: '0.1.2',
     date: '2026-07-25',
     added: [
@@ -52,10 +68,8 @@ const CHANGELOG = [
       'Linux packaging: AppImage and .deb via electron-builder.',
     ],
     known: [
-      'The ad list is a curated set of common ad/tracker domains, not a full EasyList/EasyPrivacy.',
       'Cookie blocking strips Cookie/Set-Cookie headers rather than disabling storage entirely.',
       "The per-tab shield choice isn't persisted across restarts.",
-      'A recurring task missed for a while shows one carried-over row, not one per missed day.',
       'A monthly task due on the 31st clamps to the last day of shorter months.',
       '"Same site" is approximated by the last two dot-separated labels of the hostname, not a real public-suffix list -- misclassifies multi-part TLDs like .co.uk.',
       'Whitelist/blacklist entries show only the hostname, not the page title.',
