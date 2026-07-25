@@ -10,9 +10,8 @@
 // via a plain <script> include in the welcome page.
 const CHANGELOG = [
   {
-    version: null,
-    label: 'Unreleased',
-    date: null,
+    version: '0.1.3',
+    date: '2026-07-25',
     added: [
       'To-do list: a toggle (upper-right of the panel) switches between the current "pending/overdue" view and a "next recurrence" view showing every task grouped under its next due date -- persisted across restarts. Checking a task off immediately reveals its next occurrence; today\'s completed occurrence still shows crossed out alongside it if that\'s what was just done.',
       'The to-do list panel now stays visible whenever any tasks exist, even if none are due today/tomorrow, so the view-mode toggle stays reachable.',
@@ -74,7 +73,6 @@ const CHANGELOG = [
       'Cookie blocking strips Cookie/Set-Cookie headers rather than disabling storage entirely.',
       "The per-tab shield choice isn't persisted across restarts.",
       'A monthly task due on the 31st clamps to the last day of shorter months.',
-      '"Same site" is approximated by the last two dot-separated labels of the hostname, not a real public-suffix list -- misclassifies multi-part TLDs like .co.uk.',
       'Whitelist/blacklist entries show only the hostname, not the page title.',
       'The site-access approval popup is a native OS dialog, not a themed in-app modal.',
     ],
