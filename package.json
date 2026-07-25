@@ -45,6 +45,7 @@
     }
   },
   "dependencies": {
-    "@ghostery/adblocker-electron": "^2.18.1"
+    "@ghostery/adblocker-electron": "^2.18.1",
+    "tldts-experimental": "^7.4.9"
   }
 }

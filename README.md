@@ -147,9 +147,6 @@ Builds an AppImage and a `.deb` into `dist/`.
 - A monthly task due on the 31st clamps to the last day of shorter months
   (e.g. the 28th/29th in February).
 - The edit-mode-lockout message is a native `alert()`, not a themed dialog.
-- "Same site" (for deciding whether a request is first-party) is approximated
-  by comparing the last two dot-separated labels of the hostname, not a real
-  public-suffix list — this misclassifies multi-part TLDs like `.co.uk`.
 - Whitelist/blacklist entries show only the hostname, not the page title —
   Electron can't read a title for embedded resources (scripts/iframes) that
   never load as a full page.

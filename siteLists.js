@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { getDomain } = require('tldts-experimental');
 
 // Utility/security-widget/CDN domains that don't themselves track across
 // sites, pre-approved so common site functionality (bot-check widgets, hosted
@@ -107,15 +108,13 @@ function setLinkHosts(hostnames) {
   save();
 }
 
-// SHORTCUT: approximates the registrable domain (eTLD+1) by taking the last
-// two dot-separated labels, rather than using a real public-suffix list.
-// This misclassifies multi-part TLDs (e.g. "a.example.co.uk" vs
-// "b.example.co.uk" both simplify to "co.uk" and would wrongly be treated as
-// the same site). Ceiling: swap in the `psl` package or an inlined public
-// suffix list if this ever needs to be precise.
+// Public-suffix-list-aware registrable domain (eTLD+1), via tldts (already
+// in the dependency tree through @ghostery/adblocker-electron) -- correctly
+// handles multi-part TLDs like .co.uk, unlike a naive last-two-labels split
+// ("example1.co.uk" and "example2.co.uk" used to both reduce to just
+// "co.uk" and be wrongly treated as the same site).
 function registrableDomain(hostname) {
-  const parts = hostname.split('.');
-  return parts.length <= 2 ? hostname : parts.slice(-2).join('.');
+  return getDomain(hostname) || hostname; // no recognized public suffix (IP address, localhost, etc.) -- treat the whole hostname as its own site
 }
 
 function isSameSite(hostnameA, hostnameB) {

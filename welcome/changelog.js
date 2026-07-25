@@ -23,6 +23,9 @@ const CHANGELOG = [
     ],
     fixed: [
       "Ads/trackers are now matched against a bundled EasyList/EasyPrivacy filter engine (@ghostery/adblocker-electron) instead of a small curated domain list -- far broader coverage, refreshed via scripts/build-adblock-engine.js.",
+      '"Same site" (for first-party request detection) now uses a real public-suffix list (tldts) instead of a naive last-two-labels split -- fixes multi-part TLDs like .co.uk, where two unrelated sites used to both reduce to "co.uk" and get wrongly treated as the same site.',
+      "Native dropdown menus (search engine, task frequency/pattern fields) are now styled dark to match the rest of the app, instead of the OS's bright default popup.",
+      'To-do manage modal: the close button (easily mistaken for the view-filter toggle in the same corner) moved to the corner in its place; the filter toggle moved inline next to the title.',
     ],
   },
   {

@@ -27,6 +27,18 @@ assert.strictEqual(siteLists.getWhitelist().length, siteLists.getWhitelist().fil
 assert.ok(siteLists.isSameSite('api.github.com', 'github.com'));
 assert.ok(!siteLists.isSameSite('github.com', 'github.io'));
 
+// Multi-part TLDs (public-suffix-list aware via tldts, not a naive
+// last-two-labels split): subdomains of the same .co.uk site are the same
+// site, but two different .co.uk sites are not (the old heuristic wrongly
+// reduced both to just "co.uk" and treated them as identical).
+assert.ok(siteLists.isSameSite('a.example.co.uk', 'b.example.co.uk'), 'same registrable domain under a multi-part TLD');
+assert.ok(!siteLists.isSameSite('example1.co.uk', 'example2.co.uk'), 'different sites sharing a multi-part TLD are not the same site');
+
+// Hosts with no recognized public suffix (IP addresses, bare hostnames) fall
+// back to treating the whole hostname as its own site.
+assert.ok(siteLists.isSameSite('192.168.1.1', '192.168.1.1'));
+assert.ok(!siteLists.isSameSite('192.168.1.1', '192.168.1.2'));
+
 // Persistence: reload from the same directory and confirm state survived.
 siteLists.load(tmpDir);
 assert.ok(siteLists.isWhitelisted('evil.com'));
