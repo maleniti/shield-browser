@@ -10,6 +10,17 @@
 // via a plain <script> include in the welcome page.
 const CHANGELOG = [
   {
+    version: null,
+    label: 'Unreleased',
+    date: null,
+    added: [
+      'Multiple to-do tasks due the same day are now sorted by due time, then alphabetically by name for ties.',
+    ],
+    fixed: [
+      'Typing a hostname variant of a site already saved as a link (e.g. "example.com" when "www.example.com" is the saved link) no longer re-offers to add it as a link -- it was only being compared by exact hostname string, so a variant never directly typed before looked like a brand-new site.',
+    ],
+  },
+  {
     version: '0.1.3',
     date: '2026-07-25',
     added: [

@@ -73,6 +73,17 @@ function isLinkHost(hostname) {
   return data.linkHosts.includes(hostname);
 }
 
+// Is `hostname` the same site (registrable domain) as one already saved as a
+// link, even if the exact hostname string differs (e.g. "example.com" vs
+// "www.example.com")? Used to avoid re-offering to add a site as a link
+// (see main.js's handleDirectNavigation) just because the user typed a
+// different-but-equivalent hostname variant of a site they already have
+// saved -- isWhitelisted()/isLinkHost() alone do an exact-string match, so a
+// hostname variant they'd never typed before looks "new" even when it isn't.
+function isSameSiteAsAnyLinkHost(hostname) {
+  return data.linkHosts.some((h) => isSameSite(h, hostname));
+}
+
 function addToWhitelist(hostname) {
   delete data.blacklist[hostname];
   data.whitelist[hostname] = true;
@@ -126,6 +137,7 @@ module.exports = {
   isWhitelisted,
   isBlacklisted,
   isLinkHost,
+  isSameSiteAsAnyLinkHost,
   addToWhitelist,
   addToBlacklist,
   removeFromWhitelist,

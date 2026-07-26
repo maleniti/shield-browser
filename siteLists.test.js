@@ -24,6 +24,12 @@ assert.ok(siteLists.isLinkHost('github.com'));
 assert.ok(!siteLists.isLinkHost('example.com'));
 assert.strictEqual(siteLists.getWhitelist().length, siteLists.getWhitelist().filter((h) => h).length);
 
+// A hostname variant of an existing link (e.g. typing the bare domain when
+// "www." is what's saved) should read as "already have this site", even
+// though the exact string was never itself a link host.
+assert.ok(siteLists.isSameSiteAsAnyLinkHost('api.github.com'), 'github.com is a saved link; a different subdomain is the same site');
+assert.ok(!siteLists.isSameSiteAsAnyLinkHost('example.com'), 'not the same site as any saved link');
+
 assert.ok(siteLists.isSameSite('api.github.com', 'github.com'));
 assert.ok(!siteLists.isSameSite('github.com', 'github.io'));
 

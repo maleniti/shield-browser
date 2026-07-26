@@ -425,7 +425,14 @@ function handleDirectNavigation(targetUrl) {
   if (isAlwaysBlocked(targetUrl)) return; // still fully blocked; no override
   const alreadyWhitelisted = siteLists.isWhitelisted(hostname);
   siteLists.addToWhitelist(hostname);
-  if (!alreadyWhitelisted) offerAddLinkToWelcomePages(hostname);
+  // Skip the offer if this exact hostname string is new but it's really the
+  // same site as one already saved as a link (e.g. typing "example.com" when
+  // "www.example.com" is the saved link) -- otherwise a hostname variant the
+  // user's never directly typed before looks "new" and gets offered again,
+  // even though they already have this site saved.
+  if (!alreadyWhitelisted && !siteLists.isSameSiteAsAnyLinkHost(hostname)) {
+    offerAddLinkToWelcomePages(hostname);
+  }
 }
 
 // Search submissions and site-shortcut clicks on the welcome page open the

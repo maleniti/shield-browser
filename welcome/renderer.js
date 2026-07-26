@@ -1574,7 +1574,14 @@ function renderTodo() {
     header.textContent = describeDayLabel(dateISO, todayISO);
     todoListEl.appendChild(header);
 
-    for (const item of itemsByDate.get(dateISO)) {
+    // Within a day, earliest due time first; ties broken alphabetically by
+    // name ("HH:MM" strings compare correctly as plain strings).
+    const dayItems = itemsByDate.get(dateISO).sort((a, b) => {
+      if (a.task.dueTime !== b.task.dueTime) return a.task.dueTime < b.task.dueTime ? -1 : 1;
+      return a.task.name.localeCompare(b.task.name, undefined, { sensitivity: 'base' });
+    });
+
+    for (const item of dayItems) {
       const row = document.createElement('div');
       row.className =
         'todo-item' + (item.completed ? ' completed' : '') + (item.task.id === activeTaskId ? ' active' : '');
