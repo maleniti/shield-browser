@@ -22,6 +22,7 @@ const CHANGELOG = [
     fixed: [
       'Typing a hostname variant of a site already saved as a link (e.g. "example.com" when "www.example.com" is the saved link) no longer re-offers to add it as a link -- it was only being compared by exact hostname string, so a variant never directly typed before looked like a brand-new site.',
       'The blocked-page message for a voluntarily-focused (not overdue) task no longer misleadingly says "you have an overdue to-do task" -- it now says you\'re focused on a task that doesn\'t need this site.',
+      'The to-do list\'s up/down scroll arrows now page by 3/4 of the visible list\'s height instead of by exactly one task -- a one-task step stopped making sense once day headers grouped the list, since it no longer lined up with a meaningful boundary.',
     ],
     known: [
       'On a system set to a dark OS/GTK theme, sites get `prefers-color-scheme: dark` (Electron\'s nativeTheme follows the OS by default) -- some sites\' dark stylesheets are buggy under this (e.g. uniqlo.com: dark background, but body text stays black, unreadable). Forcing nativeTheme.themeSource to \'light\' fixes it but overrides every site\'s dark mode outright, including ones that support it correctly -- deliberately not done; a more targeted workaround is still needed.',

@@ -1786,10 +1786,6 @@ todoViewToggleBtn.onclick = () => {
   renderTodo();
 };
 
-// Same up/down-by-one-row approach as the link groups (#groups-viewport),
-// except a "row" here is trivially one task -- to-dos are a single column,
-// not a wrapping grid -- so there's no gap to account for, just the item's
-// own height.
 function updateTodoScrollButtons() {
   const overflowing = todoViewportEl.scrollHeight > todoViewportEl.clientHeight + 1;
   todoScrollUpBtn.classList.toggle('visible', overflowing);
@@ -1799,13 +1795,18 @@ function updateTodoScrollButtons() {
   todoScrollDownBtn.disabled = todoViewportEl.scrollTop >= todoViewportEl.scrollHeight - todoViewportEl.clientHeight - 1;
 }
 
-function todoRowStep() {
-  const firstItem = todoListEl.querySelector('.todo-item');
-  return firstItem ? firstItem.getBoundingClientRect().height : todoViewportEl.clientHeight;
+// A one-task step (the original behavior, matching the groups/sites
+// scroll arrows elsewhere) stopped making sense once day headers were
+// added -- each click would land on an arbitrary item mid-day rather than
+// a meaningful boundary. Instead, page by 3/4 of the viewport's own
+// height; the quarter left overlapping keeps the jump from feeling
+// disorienting.
+function todoScrollStep() {
+  return todoViewportEl.clientHeight * 0.75;
 }
 
-todoScrollUpBtn.onclick = () => todoViewportEl.scrollBy({ top: -todoRowStep(), behavior: 'smooth' });
-todoScrollDownBtn.onclick = () => todoViewportEl.scrollBy({ top: todoRowStep(), behavior: 'smooth' });
+todoScrollUpBtn.onclick = () => todoViewportEl.scrollBy({ top: -todoScrollStep(), behavior: 'smooth' });
+todoScrollDownBtn.onclick = () => todoViewportEl.scrollBy({ top: todoScrollStep(), behavior: 'smooth' });
 todoViewportEl.addEventListener('scroll', updateTodoScrollButtons);
 window.addEventListener('resize', updateTodoScrollButtons);
 
