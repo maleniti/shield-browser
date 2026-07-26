@@ -574,6 +574,9 @@ body.edit-mode #exit-edit-mode-btn {
     inset -1px 0 0 rgba(0, 0, 0, 0.3),
     0 12px 32px rgba(0, 0, 0, 0.55);
 }
+body.edit-mode .group { cursor: grab; }
+body.edit-mode .site-tile { cursor: grab; }
+.group.dragging, .site-tile.dragging { opacity: 0.4; cursor: grabbing; }
 
 .group-header {
   display: flex;

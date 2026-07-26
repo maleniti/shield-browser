@@ -282,6 +282,152 @@ async function showPrompt(title, defaultValue = '') {
   return result ? result.value : null;
 }
 
+// Wires native HTML5 drag-and-drop reordering onto el, live-reordering DOM
+// siblings as the drag passes over them and committing the new order (via
+// commitOrder) once the gesture ends. dragState is a plain
+// {el, rafId, pendingX, pendingTarget} object shared by every reorderable
+// item in the same list -- use a *separate* dragState per independent list
+// (one for the groups strip, one per group's own sites) so a drag in one
+// list is never mistaken for, or reorders, a different list. Only active
+// while edit mode is on.
+function makeDraggable(el, dragState, commitOrder) {
+  el.draggable = true;
+
+  el.addEventListener('dragstart', (e) => {
+    if (!document.body.classList.contains('edit-mode')) {
+      e.preventDefault();
+      return;
+    }
+    e.stopPropagation();
+    dragState.el = el;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', ''); // some browsers require data to be set for the drag to start
+    el.classList.add('dragging');
+  });
+
+  el.addEventListener('dragover', (e) => {
+    if (!dragState.el) return;
+    e.preventDefault(); // allow a drop here
+    // Stop this *before* the "hovering the dragged element itself" check
+    // below, not after -- otherwise, once the dragged element slides under
+    // the cursor (which it does right after a reposition), this event would
+    // fall through unstopped to the container-level dragover fallback
+    // (makeDropContainer), which would then yank it straight to the end of
+    // the list. That silently undid every reposition the instant it
+    // happened, one frame later, alternating endlessly between the two.
+    e.stopPropagation();
+    if (dragState.el === el) return; // hovering the dragged element itself -- nothing to reposition
+    // dragover can fire dozens of times a second; reacting to every one of
+    // them moved the dragged element mid-burst, which shifted this target's
+    // layout out from under the cursor and made the *next* event in the same
+    // burst read stale/conflicting geometry -- flip-flopping the element
+    // back and forth as visible flicker. Collapse a whole burst down to at
+    // most one reposition per animation frame instead.
+    dragState.pendingX = e.clientX;
+    dragState.pendingTarget = el;
+    if (dragState.rafId) return;
+    dragState.rafId = requestAnimationFrame(() => {
+      dragState.rafId = null;
+      const target = dragState.pendingTarget;
+      if (!dragState.el || !target) return;
+      const rect = target.getBoundingClientRect();
+      const before = dragState.pendingX < rect.left + rect.width / 2;
+      const wantsNextSibling = before ? target : target.nextSibling;
+      if (dragState.el.nextSibling === wantsNextSibling) return; // already there -- skip the no-op move that would otherwise re-trigger a reflow every frame
+      target.parentNode.insertBefore(dragState.el, wantsNextSibling);
+    });
+  });
+
+  el.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  el.addEventListener('dragend', (e) => {
+    e.stopPropagation();
+    el.classList.remove('dragging');
+    if (dragState.rafId) {
+      cancelAnimationFrame(dragState.rafId);
+      dragState.rafId = null;
+    }
+    if (dragState.el) {
+      dragState.el = null;
+      commitOrder();
+    }
+  });
+}
+
+// Lets dragging into empty space past the last item (rather than needing to
+// hover directly over another item) still append the dragged item at the
+// end of the list -- beforeEl is the container's trailing non-reorderable
+// element to insert ahead of (the "+ Add site" tile), or omitted to just
+// append at the very end (the groups strip has no such trailing element).
+function makeDropContainer(containerEl, dragState, beforeEl) {
+  containerEl.addEventListener('dragover', (e) => {
+    if (!dragState.el) return;
+    e.preventDefault();
+    if (dragState.el.nextSibling === (beforeEl || null)) return; // already last -- skip the no-op move
+    containerEl.insertBefore(dragState.el, beforeEl || null);
+  });
+}
+
+// While a drag is over one of the up/down scroll-arrow buttons, repeatedly
+// nudges viewportEl in that direction so an item can be dragged into a
+// group/row that's currently scrolled out of view, instead of being stuck
+// unreachable at the edge of the visible page.
+function makeAutoScrollZone(zoneEl, viewportEl, direction, dragState) {
+  let intervalId = null;
+  function stop() {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  }
+  zoneEl.addEventListener('dragenter', (e) => {
+    if (!dragState.el) return;
+    e.preventDefault();
+    if (intervalId) return;
+    intervalId = setInterval(() => viewportEl.scrollBy({ top: direction * 8 }), 40);
+  });
+  zoneEl.addEventListener('dragover', (e) => {
+    if (dragState.el) e.preventDefault(); // keep signaling "drop allowed" so dragleave doesn't fire spuriously
+  });
+  zoneEl.addEventListener('dragleave', stop);
+  zoneEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    stop();
+  });
+}
+
+const groupDragState = { el: null };
+
+function reorderGroupsFromDOM() {
+  const orderedIds = [...groupsEl.querySelectorAll(':scope > .group')].map((el) => el.dataset.groupId);
+  groups.sort((a, b) => orderedIds.indexOf(a.id) - orderedIds.indexOf(b.id));
+  // render() rebuilds every group card from scratch, which would otherwise
+  // silently reset the strip's scroll position back to the top -- jarring
+  // if you'd scrolled down to reach the group you just dropped.
+  const scrollTop = groupsViewportEl.scrollTop;
+  saveGroups();
+  render();
+  groupsViewportEl.scrollTop = scrollTop;
+  updateGroupsScrollButtons();
+}
+
+function reorderSitesFromDOM(group, sitesEl) {
+  const orderedIds = [...sitesEl.querySelectorAll('.site-tile')].map((el) => el.dataset.siteId);
+  group.sites.sort((a, b) => orderedIds.indexOf(a.id) - orderedIds.indexOf(b.id));
+  // Same reasoning as reorderGroupsFromDOM: preserve this group's own
+  // sites-viewport scroll position across the render() that follows.
+  const scrollTop = sitesEl.parentElement.scrollTop;
+  saveGroups();
+  render();
+  const newViewport = groupsEl.querySelector(`.group[data-group-id="${group.id}"] .sites-viewport`);
+  if (newViewport) newViewport.scrollTop = scrollTop;
+}
+
+makeDropContainer(groupsEl, groupDragState);
+
 function render() {
   groupsEl.innerHTML = '';
 
@@ -319,6 +465,8 @@ function renderGroupsEmptyState() {
 function renderGroup(group) {
   const el = document.createElement('div');
   el.className = 'group';
+  el.dataset.groupId = group.id;
+  makeDraggable(el, groupDragState, reorderGroupsFromDOM);
 
   const header = document.createElement('div');
   header.className = 'group-header';
@@ -343,6 +491,8 @@ function renderGroup(group) {
   // Sites show as a fixed 2x2 grid; more than 4 sites overflow vertically
   // and are reached via the up/down bars instead of a native scrollbar
   // (same hidden-scrollbar-plus-custom-arrows approach as the tab strip).
+  const siteDragState = { el: null };
+
   const scrollUpBtn = document.createElement('button');
   scrollUpBtn.className = 'sites-scroll-btn sites-scroll-up';
   scrollUpBtn.textContent = '⌃';
@@ -354,8 +504,14 @@ function renderGroup(group) {
 
   const sitesEl = document.createElement('div');
   sitesEl.className = 'sites';
-  for (const site of group.sites) sitesEl.appendChild(renderSite(group.id, site));
-  sitesEl.appendChild(renderAddSiteTile(group.id));
+  for (const site of group.sites) {
+    const tile = renderSite(group.id, site);
+    makeDraggable(tile, siteDragState, () => reorderSitesFromDOM(group, sitesEl));
+    sitesEl.appendChild(tile);
+  }
+  const addTile = renderAddSiteTile(group.id);
+  sitesEl.appendChild(addTile);
+  makeDropContainer(sitesEl, siteDragState, addTile);
   viewport.appendChild(sitesEl);
   el.appendChild(viewport);
 
@@ -364,6 +520,9 @@ function renderGroup(group) {
   scrollDownBtn.textContent = '⌄';
   scrollDownBtn.title = 'Next 4';
   el.appendChild(scrollDownBtn);
+
+  makeAutoScrollZone(scrollUpBtn, viewport, -1, siteDragState);
+  makeAutoScrollZone(scrollDownBtn, viewport, 1, siteDragState);
 
   function updateScrollButtons() {
     const overflowing = viewport.scrollHeight > viewport.clientHeight + 1;
@@ -399,6 +558,7 @@ function renderSite(groupId, site) {
   a.className = 'site-tile';
   a.href = site.url;
   a.title = site.url;
+  a.dataset.siteId = site.id;
   // In edit mode the tile itself opens the edit modal instead of navigating
   // (the small pencil-icon overlay this used to need is gone -- the whole
   // tile does the job now).
@@ -615,6 +775,8 @@ function updateGroupsLayout() {
 
 groupsScrollUpBtn.onclick = () => groupsViewportEl.scrollBy({ top: -groupsRowStep(), behavior: 'smooth' });
 groupsScrollDownBtn.onclick = () => groupsViewportEl.scrollBy({ top: groupsRowStep(), behavior: 'smooth' });
+makeAutoScrollZone(groupsScrollUpBtn, groupsViewportEl, -1, groupDragState);
+makeAutoScrollZone(groupsScrollDownBtn, groupsViewportEl, 1, groupDragState);
 groupsViewportEl.addEventListener('scroll', updateGroupsScrollButtons);
 window.addEventListener('resize', updateGroupsLayout);
 
