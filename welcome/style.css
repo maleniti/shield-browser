@@ -945,6 +945,17 @@ body.edit-mode .add-site-tile.edit-only { display: inline-block; }
   line-height: 1.5;
 }
 
+.edit-scope-modal {
+  width: 320px;
+}
+
+.edit-scope-desc {
+  font-size: 12px;
+  color: #9aa0a6;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
 .about-meta {
   font-size: 12px;
   color: #9aa0a6;

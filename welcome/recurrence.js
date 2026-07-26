@@ -165,6 +165,16 @@ function nextOccurrenceAfter(task, afterISO) {
   return null;
 }
 
+// The occurrence immediately before dateISO (dateISO is assumed to itself be
+// a valid occurrence of task), or null if there isn't one -- dateISO is the
+// task's very first occurrence. Complements nextOccurrenceAfter; used by the
+// to-do list's "edit this occurrence" / "edit this and following" split to
+// know where the historical portion of the series should end.
+function previousOccurrenceBefore(task, dateISO) {
+  const dayBefore = dateToISO(addDays(new Date(dateISO + 'T00:00:00'), -1));
+  return mostRecentOccurrenceOnOrBefore(task, dayBefore);
+}
+
 function isOverdue(task, occurrenceDateISO, now) {
   const [h, m] = (task.dueTime || '23:59').split(':').map(Number);
   const dueDateTime = new Date(occurrenceDateISO + 'T00:00:00');
@@ -181,6 +191,7 @@ const api = {
   occursOn,
   mostRecentOccurrenceOnOrBefore,
   nextOccurrenceAfter,
+  previousOccurrenceBefore,
   isOverdue,
 };
 

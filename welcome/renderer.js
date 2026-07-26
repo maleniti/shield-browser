@@ -1156,10 +1156,29 @@ const ORDINAL_OPTIONS = [
 const isWeeklyFrequencyType = (frequencyType) => frequencyType === 'weekly' || frequencyType === 'custom-weeks';
 const isMonthlyFrequencyType = (frequencyType) => frequencyType === 'monthly' || frequencyType === 'custom-months';
 
-async function openTaskForm(existingTask) {
+// `splitContext` (only ever set together with an existingTask) is
+// `{ occurrenceDate, scope }` -- present when editing a recurring task via
+// the "only this occurrence" / "this and following occurrences" choice (see
+// showEditScopeChoice below), rather than the whole series in place. It
+// changes the modal's title and, on save, routes to applySplitEdit() instead
+// of mutating existingTask directly. The due date shown/edited is the
+// specific occurrence being split off, not the series' original anchor date.
+async function openTaskForm(existingTask, splitContext) {
   const groupOptions = groups.map((g) => ({ value: g.id, label: g.name }));
+  const formTitle = splitContext
+    ? splitContext.scope === 'instance'
+      ? 'Edit this occurrence'
+      : 'Edit this and following occurrences'
+    : existingTask
+      ? 'Edit task'
+      : 'Add task';
+  const formDueDate = splitContext
+    ? splitContext.occurrenceDate
+    : existingTask
+      ? existingTask.dueDate
+      : Recurrence.dateToISO(new Date());
   const result = await showFormModal(
-    existingTask ? 'Edit task' : 'Add task',
+    formTitle,
     [
       { name: 'name', label: 'Name', value: existingTask ? existingTask.name : '' },
       {
@@ -1173,7 +1192,7 @@ async function openTaskForm(existingTask) {
         name: 'dueDate',
         label: 'Due date',
         type: 'date',
-        value: existingTask ? existingTask.dueDate : Recurrence.dateToISO(new Date()),
+        value: formDueDate,
       },
       { name: 'dueTime', label: 'Due time', type: 'time', value: existingTask ? existingTask.dueTime : '18:00' },
       {
@@ -1256,7 +1275,20 @@ async function openTaskForm(existingTask) {
   }
 
   const frequency = decodeFrequency(result.frequencyType, result.interval, result);
-  if (existingTask) {
+  if (splitContext) {
+    applySplitEdit(existingTask, {
+      originalOccurrenceDate: splitContext.occurrenceDate,
+      newOccurrenceDate: result.dueDate,
+      scope: splitContext.scope,
+    }, {
+      name: result.name,
+      description: result.description,
+      dueTime: result.dueTime,
+      frequency,
+      endDate,
+      groupIds: result.groupIds,
+    });
+  } else if (existingTask) {
     existingTask.name = result.name;
     existingTask.description = result.description;
     existingTask.dueDate = result.dueDate;
@@ -1280,6 +1312,124 @@ async function openTaskForm(existingTask) {
   saveTasks();
   renderTodo();
   renderTodoManageList();
+}
+
+// Splits a recurring task's series around newOccurrenceDate -- the split
+// point, which is normally the occurrence that was double-clicked
+// (originalOccurrenceDate) but becomes wherever the user retargeted the
+// "Due date" field to in the edit form, if they changed it. scope:
+//  - 'instance': the historical portion ends at the occurrence just before
+//    this one (or is dropped entirely if this was the series' very first
+//    occurrence -- nothing historical to keep). This occurrence becomes its
+//    own standalone 'once' task carrying the edits. The rest of the
+//    ORIGINAL series (its own unedited settings) continues, starting at the
+//    next occurrence after this one.
+//  - 'following': the historical portion ends the same way, but a single new
+//    task with the EDITED settings takes over starting at this occurrence
+//    (no separate "original settings continue" task -- there's nothing left
+//    of the old pattern after this point).
+function applySplitEdit(originalTask, { originalOccurrenceDate, newOccurrenceDate, scope }, edited) {
+  const originalCompletions = originalTask.completions || {};
+  const originalEndDate = originalTask.endDate || null;
+  const wasOriginalOccurrenceDone = !!originalCompletions[originalOccurrenceDate];
+  const prevDate = Recurrence.previousOccurrenceBefore(originalTask, newOccurrenceDate);
+  const nextDate = Recurrence.nextOccurrenceAfter(originalTask, newOccurrenceDate);
+
+  if (prevDate) {
+    originalTask.endDate = prevDate; // truncate the historical portion to end right before this occurrence
+    // Once split off, the historical portion can never advance past this
+    // fixed end date -- if its last occurrence were left incomplete, it
+    // would show as a perpetually "carried over" overdue item with no
+    // future occurrence to ever replace it. Mark whatever's already in the
+    // past as done; anything on/after today hasn't happened yet.
+    markPastOccurrencesDone(originalTask, Recurrence.dateToISO(new Date()));
+  } else {
+    tasks = tasks.filter((t) => t.id !== originalTask.id); // this was the series' very first occurrence -- nothing historical to keep
+  }
+
+  if (scope === 'instance') {
+    tasks.push({
+      id: uid(),
+      name: edited.name,
+      description: edited.description,
+      dueDate: newOccurrenceDate,
+      dueTime: edited.dueTime,
+      frequency: { type: 'once', interval: 1 },
+      endDate: null,
+      groupIds: edited.groupIds,
+      completions: wasOriginalOccurrenceDone ? { [newOccurrenceDate]: true } : {},
+    });
+
+    if (nextDate) {
+      tasks.push({
+        id: uid(),
+        name: originalTask.name,
+        description: originalTask.description,
+        dueDate: nextDate,
+        dueTime: originalTask.dueTime,
+        frequency: originalTask.frequency,
+        endDate: originalEndDate,
+        groupIds: originalTask.groupIds,
+        completions: { ...originalCompletions },
+      });
+    }
+  } else if (scope === 'following') {
+    tasks.push({
+      id: uid(),
+      name: edited.name,
+      description: edited.description,
+      dueDate: newOccurrenceDate,
+      dueTime: edited.dueTime,
+      frequency: edited.frequency,
+      endDate: edited.endDate,
+      groupIds: edited.groupIds,
+      completions: {
+        ...originalCompletions,
+        ...(wasOriginalOccurrenceDone ? { [newOccurrenceDate]: true } : {}),
+      },
+    });
+  }
+}
+
+// Marks every occurrence of task strictly before todayISO as complete --
+// used right after truncating a split-off historical task to a fixed end
+// date, so it doesn't linger as an incomplete "carried over" item forever.
+function markPastOccurrencesDone(task, todayISO) {
+  const yesterdayISO = Recurrence.dateToISO(Recurrence.addDays(new Date(todayISO + 'T00:00:00'), -1));
+  let cursor = task.dueDate;
+  for (let i = 0; i < 3660 && cursor <= yesterdayISO; i++) {
+    if (Recurrence.occursOn(task, cursor)) task.completions[cursor] = true;
+    cursor = Recurrence.dateToISO(Recurrence.addDays(new Date(cursor + 'T00:00:00'), 1));
+  }
+}
+
+const editScopeOverlay = document.getElementById('edit-scope-overlay');
+
+// Resolves 'instance' | 'following' | 'all' | null (cancelled). Only shown
+// for recurring tasks -- a 'once' task has nothing to split, so its
+// double-click skips straight to editing it.
+function showEditScopeChoice() {
+  return new Promise((resolve) => {
+    editScopeOverlay.classList.remove('hidden');
+    const instanceBtn = document.getElementById('edit-scope-instance');
+    const followingBtn = document.getElementById('edit-scope-following');
+    const allBtn = document.getElementById('edit-scope-all');
+    const cancelBtn = document.getElementById('edit-scope-cancel');
+
+    function finish(choice) {
+      editScopeOverlay.classList.add('hidden');
+      instanceBtn.onclick = null;
+      followingBtn.onclick = null;
+      allBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(choice);
+    }
+
+    instanceBtn.onclick = () => finish('instance');
+    followingBtn.onclick = () => finish('following');
+    allBtn.onclick = () => finish('all');
+    cancelBtn.onclick = () => finish(null);
+  });
 }
 
 function deleteTask(taskId) {
@@ -1678,7 +1828,22 @@ function renderTodo() {
         row.appendChild(focusBtn);
       }
 
-      row.ondblclick = () => openTaskForm(item.task);
+      // A 'once' task has no recurrence to split, so its double-click skips
+      // straight to editing it -- only recurring tasks get the "which
+      // occurrence(s)" choice.
+      row.ondblclick = async () => {
+        if (item.task.frequency.type === 'once') {
+          openTaskForm(item.task);
+          return;
+        }
+        const scope = await showEditScopeChoice();
+        if (!scope) return;
+        if (scope === 'all') {
+          openTaskForm(item.task);
+        } else {
+          openTaskForm(item.task, { occurrenceDate: item.occurrenceDate, scope });
+        }
+      };
 
       todoListEl.appendChild(row);
     }

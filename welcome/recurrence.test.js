@@ -149,6 +149,15 @@ assert.strictEqual(R.nextOccurrenceAfter(monthly, '2026-02-01'), '2026-02-28', '
 assert.strictEqual(R.nextOccurrenceAfter(dailyWithEnd, '2026-03-19'), '2026-03-20', 'the last occurrence, right at the end date');
 assert.strictEqual(R.nextOccurrenceAfter(dailyWithEnd, '2026-03-20'), null, 'nothing after the end date');
 
+// -- previousOccurrenceBefore ------------------------------------------------
+assert.strictEqual(R.previousOccurrenceBefore(once, '2026-03-10'), null, "a once task's due date is its only occurrence");
+assert.strictEqual(R.previousOccurrenceBefore(daily, '2026-03-10'), null, 'the very first occurrence has nothing before it');
+assert.strictEqual(R.previousOccurrenceBefore(daily, '2026-03-15'), '2026-03-14');
+assert.strictEqual(R.previousOccurrenceBefore(everyThreeDays, '2026-03-13'), '2026-03-10', 'previous 3-day step is the due date itself');
+assert.strictEqual(R.previousOccurrenceBefore(weekly, '2026-03-17'), '2026-03-10');
+assert.strictEqual(R.previousOccurrenceBefore(monthly, '2026-02-28'), '2026-01-31', 'Feb clamped occurrence, previous is Jan 31st');
+assert.strictEqual(R.previousOccurrenceBefore(monthly, '2026-03-31'), '2026-02-28');
+
 // -- isOverdue ---------------------------------------------------------------
 const t = { dueTime: '18:00' };
 assert.ok(R.isOverdue(t, '2026-03-10', new Date('2026-03-10T18:01:00')));

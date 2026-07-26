@@ -15,7 +15,7 @@ const CHANGELOG = [
     date: null,
     added: [
       'Multiple to-do tasks due the same day are now sorted by due time, then alphabetically by name for ties.',
-      'Double-clicking a task on the welcome page\'s to-do list opens its edit form directly.',
+      'Double-clicking a task on the welcome page\'s to-do list opens its edit form directly -- for a recurring task, first asking whether to edit only that occurrence, that occurrence and all following ones, or the whole series. Editing "only this occurrence" or "this and following" splits the series: the historical portion ends at the prior occurrence (its own past occurrences are auto-marked done, so it can\'t linger as a stuck "carried over" item), and the edited part continues as its own task (or a standalone one-off, for a single occurrence) with the original settings otherwise undisturbed. Changing the "Due date" field while splitting moves the split point itself to that date instead of the occurrence originally double-clicked.',
       'A Focus button on each of today\'s to-do tasks lets you voluntarily enter focus mode for it, even if it\'s not overdue and other tasks are -- same rules as overdue-triggered focus mode (browsing restricted to that task\'s linked groups). Only one task can be focused at a time, and it can be toggled back off (a carried-over, already-past task still can\'t -- it has no button here, keeping the older non-escapable behavior when it\'s the sole overdue task).',
     ],
     fixed: [
