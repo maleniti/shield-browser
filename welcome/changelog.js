@@ -15,6 +15,7 @@ const CHANGELOG = [
     date: null,
     added: [
       'Multiple to-do tasks due the same day are now sorted by due time, then alphabetically by name for ties.',
+      'Double-clicking a task on the welcome page\'s to-do list opens its edit form directly.',
     ],
     fixed: [
       'Typing a hostname variant of a site already saved as a link (e.g. "example.com" when "www.example.com" is the saved link) no longer re-offers to add it as a link -- it was only being compared by exact hostname string, so a variant never directly typed before looked like a brand-new site.',

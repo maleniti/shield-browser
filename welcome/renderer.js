@@ -1631,6 +1631,7 @@ function renderTodo() {
           renderTodo();
         };
       }
+      row.ondblclick = () => openTaskForm(item.task);
 
       todoListEl.appendChild(row);
     }
