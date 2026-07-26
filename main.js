@@ -168,9 +168,16 @@ function requestAccessDecision(requestingHostname, targetHostname) {
 // (multiple tasks overdue, none picked yet as the one being worked on) --
 // null and [] are meaningfully different, not interchangeable.
 let focusModeHosts = null;
+// Whether the current focus-mode lockdown is because a task is actually
+// overdue, or because the user voluntarily focused a not-yet-overdue task
+// via its Focus button (see welcome/renderer.js's updateFocusMode) -- purely
+// for phrasing the blocked-page message correctly; doesn't affect which
+// hosts are allowed.
+let focusModeReason = null;
 
-function setFocusModeHosts(hostnames) {
+function setFocusModeHosts(hostnames, reason) {
   focusModeHosts = hostnames;
+  focusModeReason = reason;
 }
 
 function isTaskSite(hostname) {
@@ -246,7 +253,9 @@ function installNetworkBlocking(sess, { enforceWhitelist }) {
 
     if (enforceWhitelist && focusModeHosts !== null) {
       if (isAllowedInFocusMode(targetHostname, requestingHostname)) return allow(details, targetHostname, callback);
-      if (details.resourceType === 'mainFrame') showBlockedPage(details, targetHostname, 'focus-mode');
+      if (details.resourceType === 'mainFrame') {
+        showBlockedPage(details, targetHostname, focusModeReason === 'voluntary' ? 'focus-mode-voluntary' : 'focus-mode');
+      }
       return callback({ cancel: true });
     }
 
@@ -638,7 +647,7 @@ ipcMain.handle('get-site-lists', () => ({
 }));
 ipcMain.on('remove-from-whitelist', (_e, hostname) => siteLists.removeFromWhitelist(hostname));
 ipcMain.on('remove-from-blacklist', (_e, hostname) => siteLists.removeFromBlacklist(hostname));
-ipcMain.on('set-focus-mode', (_e, hostnames) => setFocusModeHosts(hostnames));
+ipcMain.on('set-focus-mode', (_e, hostnames, reason) => setFocusModeHosts(hostnames, reason));
 
 // Custom titlebar buttons, standing in for the OS ones removed by frame: false.
 ipcMain.on('window-minimize', () => mainWindow.minimize());

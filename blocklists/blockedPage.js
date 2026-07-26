@@ -17,6 +17,9 @@ const REASONS = {
   'focus-mode': (host) => `<code>${host}</code> is blocked because you have an overdue to-do task.
     Only sites needed for that task are reachable until it's marked done -- check the to-do list
     on the welcome page.`,
+  'focus-mode-voluntary': (host) => `<code>${host}</code> is blocked because you're focused on a to-do task
+    that doesn't need it. Only sites needed for that task are reachable until it's marked done or you
+    turn off focus for it -- check the to-do list on the welcome page.`,
 };
 
 function renderBlockedPage(hostname, reason = 'social') {

@@ -16,9 +16,11 @@ const CHANGELOG = [
     added: [
       'Multiple to-do tasks due the same day are now sorted by due time, then alphabetically by name for ties.',
       'Double-clicking a task on the welcome page\'s to-do list opens its edit form directly.',
+      'A Focus button on each of today\'s to-do tasks lets you voluntarily enter focus mode for it, even if it\'s not overdue and other tasks are -- same rules as overdue-triggered focus mode (browsing restricted to that task\'s linked groups). Only one task can be focused at a time, and it can be toggled back off (a carried-over, already-past task still can\'t -- it has no button here, keeping the older non-escapable behavior when it\'s the sole overdue task).',
     ],
     fixed: [
       'Typing a hostname variant of a site already saved as a link (e.g. "example.com" when "www.example.com" is the saved link) no longer re-offers to add it as a link -- it was only being compared by exact hostname string, so a variant never directly typed before looked like a brand-new site.',
+      'The blocked-page message for a voluntarily-focused (not overdue) task no longer misleadingly says "you have an overdue to-do task" -- it now says you\'re focused on a task that doesn\'t need this site.',
     ],
   },
   {

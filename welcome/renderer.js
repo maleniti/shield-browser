@@ -1427,16 +1427,22 @@ function taskAllowedHostnames(task) {
 // total lockdown (multiple tasks overdue, none chosen yet), [...] = only the
 // active task's sites are reachable. See main.js's focusModeHosts.
 function updateFocusMode(pendingOverdue) {
-  if (pendingOverdue.length === 0) {
-    window.siteListAPI.setFocusMode(null);
+  // Nothing overdue and no task voluntarily focused (via its Focus button)
+  // -- browse normally.
+  if (pendingOverdue.length === 0 && !activeTaskId) {
+    window.siteListAPI.setFocusMode(null, null);
     return;
   }
   if (!activeTaskId) {
-    window.siteListAPI.setFocusMode([]);
+    window.siteListAPI.setFocusMode([], 'overdue'); // overdue exists but nothing chosen yet -- total lockdown pending a choice
     return;
   }
   const activeTask = tasks.find((t) => t.id === activeTaskId);
-  window.siteListAPI.setFocusMode(activeTask ? taskAllowedHostnames(activeTask) : []);
+  // Tells main.js whether to phrase a blocked page as "you have an overdue
+  // task" or "you're voluntarily focused on a task" -- see
+  // blocklists/blockedPage.js's focus-mode vs focus-mode-voluntary reasons.
+  const reason = pendingOverdue.some((item) => item.task.id === activeTaskId) ? 'overdue' : 'voluntary';
+  window.siteListAPI.setFocusMode(activeTask ? taskAllowedHostnames(activeTask) : [], reason);
 }
 
 const todoSectionEl = document.getElementById('todo-section');
@@ -1527,6 +1533,10 @@ function describeDayLabel(dateISO, todayISO) {
   return dateStr;
 }
 
+const FOCUS_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+const FOCUSED_ICON = '<svg viewBox="0 0 24 24" width="14" height="14"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>';
+
 function renderTodo() {
   updateTodoViewToggleButton();
 
@@ -1547,10 +1557,22 @@ function renderTodo() {
   const items = todoViewMode === 'next-recurrence' ? computeNextRecurrenceItems() : computeTodoDisplayItems();
 
   const pendingOverdue = items.filter((item) => item.overdue && !item.completed);
-  if (pendingOverdue.length === 1) {
-    activeTaskId = pendingOverdue[0].task.id; // only one candidate, no need to ask
-  } else if (pendingOverdue.length === 0 || !pendingOverdue.some((item) => item.task.id === activeTaskId)) {
-    activeTaskId = null; // nothing pending, or the previously-active task no longer is -- ask again
+  // Eligible to be (or stay) the focused task: today's occurrence (whether
+  // overdue yet or not -- the Focus button lets the user opt into any of
+  // today's tasks, not just overdue ones) or a carried-over overdue one.
+  const focusEligible = items.filter((item) => (item.kind === 'today' || item.kind === 'carried-over') && !item.completed);
+
+  // A lone overdue CARRIED-OVER task is auto-selected, same as always -- no
+  // ambiguity, and (unlike today's tasks) it has no Focus button of its own
+  // to explicitly pick it otherwise. A lone overdue TODAY task is NOT
+  // auto-selected: it has its own toggleable Focus button below, and
+  // auto-selecting it would fight with turning it back off (it would just
+  // re-select itself on the very next render).
+  const soloCarriedOver = pendingOverdue.length === 1 && pendingOverdue[0].kind === 'carried-over' ? pendingOverdue[0].task.id : null;
+  if (soloCarriedOver && !activeTaskId) {
+    activeTaskId = soloCarriedOver;
+  } else if (activeTaskId && !focusEligible.some((item) => item.task.id === activeTaskId)) {
+    activeTaskId = null; // previously-focused task is no longer eligible (completed, or rolled past today) -- ask/pick again
   }
   saveActiveTaskId();
 
@@ -1631,6 +1653,31 @@ function renderTodo() {
           renderTodo();
         };
       }
+
+      // Lets the user voluntarily focus on any of today's tasks -- not just
+      // an overdue one -- and toggle back off again. Only one task can be
+      // focused at a time (activeTaskId is a single value, not a set), so
+      // focusing a different task implicitly un-focuses whichever one was
+      // active before. Scoped to today's tasks only: a carried-over
+      // (already-past) task has no button here and keeps the older,
+      // non-escapable auto-focus behavior when it's the sole overdue task.
+      if (item.kind === 'today' && !item.completed) {
+        const isFocused = item.task.id === activeTaskId;
+        const focusBtn = document.createElement('button');
+        focusBtn.className = 'todo-focus-btn' + (isFocused ? ' active' : '');
+        focusBtn.innerHTML = isFocused ? FOCUSED_ICON : FOCUS_ICON;
+        focusBtn.title = isFocused
+          ? 'Stop focusing on this task'
+          : "Focus on this task (restricts browsing to its linked groups' sites until done)";
+        focusBtn.onclick = (e) => {
+          e.stopPropagation();
+          activeTaskId = isFocused ? null : item.task.id;
+          saveActiveTaskId();
+          renderTodo();
+        };
+        row.appendChild(focusBtn);
+      }
+
       row.ondblclick = () => openTaskForm(item.task);
 
       todoListEl.appendChild(row);

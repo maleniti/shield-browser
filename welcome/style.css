@@ -217,6 +217,25 @@ main {
 }
 .todo-item-meta.overdue { color: #f28b82; }
 
+.todo-focus-btn {
+  flex: none;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #80868b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.todo-focus-btn:hover { background: rgba(255, 255, 255, 0.12); color: #e8eaed; }
+.todo-focus-btn.active { color: #8ab4f8; }
+.todo-focus-btn.active:hover { background: rgba(138, 180, 248, 0.15); }
+
 .todo-hint {
   font-size: 11px;
   color: #80868b;
