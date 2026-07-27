@@ -1360,7 +1360,10 @@ const isMonthlyFrequencyType = (frequencyType) => frequencyType === 'monthly' ||
 // changes the modal's title and, on save, routes to applySplitEdit() instead
 // of mutating existingTask directly. The due date shown/edited is the
 // specific occurrence being split off, not the series' original anchor date.
-async function openTaskForm(existingTask, splitContext) {
+// `initialDueDate` only applies to a brand-new task (no existingTask) --
+// used by each to-do day header's own "+" button so the form opens
+// pre-filled with that day's date instead of always defaulting to today.
+async function openTaskForm(existingTask, splitContext, initialDueDate) {
   const groupOptions = groups.map((g) => ({ value: g.id, label: g.name }));
   const formTitle = splitContext
     ? splitContext.scope === 'instance'
@@ -1373,7 +1376,7 @@ async function openTaskForm(existingTask, splitContext) {
     ? splitContext.occurrenceDate
     : existingTask
       ? existingTask.dueDate
-      : Recurrence.dateToISO(new Date());
+      : initialDueDate || Recurrence.dateToISO(new Date());
   const result = await showFormModal(
     formTitle,
     [
@@ -2154,7 +2157,18 @@ function renderTodo() {
   for (const dateISO of [...itemsByDate.keys()].sort()) {
     const header = document.createElement('div');
     header.className = 'todo-day-header';
-    header.textContent = describeDayLabel(dateISO, todayISO);
+
+    const headerLabel = document.createElement('span');
+    headerLabel.textContent = describeDayLabel(dateISO, todayISO);
+    header.appendChild(headerLabel);
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'todo-day-add-btn';
+    addBtn.textContent = '+';
+    addBtn.title = `Add a task due ${dateISO}`;
+    addBtn.onclick = () => openTaskForm(null, undefined, dateISO);
+    header.appendChild(addBtn);
+
     todoListEl.appendChild(header);
 
     // Within a day: all-day tasks first (they have no due time to sort by),

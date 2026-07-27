@@ -161,12 +161,33 @@ main {
 #todo-viewport::-webkit-scrollbar { display: none; } /* Chromium */
 
 .todo-day-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 15px;
   font-weight: 700;
   color: #fff;
   padding: 10px 6px 4px;
 }
 .todo-day-header:first-child { padding-top: 2px; }
+
+.todo-day-add-btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #80868b;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.todo-day-add-btn:hover { background: rgba(255, 255, 255, 0.12); color: #e8eaed; }
 
 .todo-item {
   display: flex;
