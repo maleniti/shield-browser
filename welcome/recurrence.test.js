@@ -159,9 +159,32 @@ assert.strictEqual(R.previousOccurrenceBefore(monthly, '2026-02-28'), '2026-01-3
 assert.strictEqual(R.previousOccurrenceBefore(monthly, '2026-03-31'), '2026-02-28');
 
 // -- isOverdue ---------------------------------------------------------------
-const t = { dueTime: '18:00' };
+const t = { dueTime: '18:00', frequency: { type: 'once' } };
 assert.ok(R.isOverdue(t, '2026-03-10', new Date('2026-03-10T18:01:00')));
 assert.ok(!R.isOverdue(t, '2026-03-10', new Date('2026-03-10T17:59:00')));
 assert.ok(R.isOverdue(t, '2026-03-10', new Date('2026-03-11T00:00:00')), 'any later day is overdue regardless of time');
+
+// -- isOverdue: all-day tasks --------------------------------------------
+const allDayOnce = { allDay: true, frequency: { type: 'once' } };
+assert.ok(!R.isOverdue(allDayOnce, '2026-03-10', new Date('2026-03-10T23:00:00')), "not overdue during its own day, no matter the time");
+assert.ok(R.isOverdue(allDayOnce, '2026-03-10', new Date('2026-03-11T00:00:01')), 'overdue as soon as the day itself has passed');
+
+// every-3-days all-day: independent occurrences, same "overdue once the day
+// has passed" rule per occurrence -- NOT the continuous-task special case
+// (that's daily/interval-1 only).
+const allDayEveryThreeDays = { allDay: true, endDate: null, frequency: { type: 'days', interval: 3 } };
+assert.ok(!R.isOverdue(allDayEveryThreeDays, '2026-03-10', new Date('2026-03-10T23:00:00')));
+assert.ok(R.isOverdue(allDayEveryThreeDays, '2026-03-10', new Date('2026-03-11T00:00:01')));
+
+// daily (interval 1) all-day: one continuous task -- never overdue without
+// an end date, and not overdue on/before the end date even long after the
+// due date; only overdue once actually past the end date.
+const allDayDailyNoEnd = { allDay: true, endDate: null, frequency: { type: 'days', interval: 1 } };
+assert.ok(!R.isOverdue(allDayDailyNoEnd, '2026-03-10', new Date('2026-03-10T23:00:00')));
+assert.ok(!R.isOverdue(allDayDailyNoEnd, '2026-03-10', new Date('2027-01-01T00:00:00')), 'no end date -- never overdue, however long it runs');
+
+const allDayDailyWithEnd = { allDay: true, endDate: '2026-03-20', frequency: { type: 'days', interval: 1 } };
+assert.ok(!R.isOverdue(allDayDailyWithEnd, '2026-03-15', new Date('2026-03-20T23:59:00')), 'still on/before its end date');
+assert.ok(R.isOverdue(allDayDailyWithEnd, '2026-03-15', new Date('2026-03-21T00:00:01')), 'overdue once truly past the end date');
 
 console.log('recurrence.test.js: all assertions passed');

@@ -1265,7 +1265,7 @@ function describeTaskSchedule(task) {
   } else {
     label = '';
   }
-  const scheduleBase = `${task.dueDate} ${task.dueTime} · ${label}`;
+  const scheduleBase = `${task.dueDate} ${task.allDay ? 'all day' : task.dueTime} · ${label}`;
   return task.endDate ? `${scheduleBase} until ${task.endDate}` : scheduleBase;
 }
 
@@ -1356,7 +1356,21 @@ async function openTaskForm(existingTask, splitContext) {
         type: 'date',
         value: formDueDate,
       },
-      { name: 'dueTime', label: 'Due time', type: 'time', value: existingTask ? existingTask.dueTime : '18:00' },
+      {
+        name: 'allDay',
+        label: '',
+        type: 'checkboxes',
+        value: existingTask && existingTask.allDay ? ['allDay'] : [],
+        options: [{ value: 'allDay', label: 'All day (no specific time)' }],
+        required: false,
+      },
+      {
+        name: 'dueTime',
+        label: 'Due time',
+        type: 'time',
+        value: existingTask ? existingTask.dueTime || '18:00' : '18:00',
+        showIf: (v) => v.allDay.length === 0,
+      },
       {
         name: 'frequencyType',
         label: 'Repeats',
@@ -1436,6 +1450,8 @@ async function openTaskForm(existingTask, splitContext) {
     return;
   }
 
+  const allDay = result.allDay.length > 0;
+  const dueTime = allDay ? null : result.dueTime;
   const frequency = decodeFrequency(result.frequencyType, result.interval, result);
   if (splitContext) {
     applySplitEdit(existingTask, {
@@ -1445,7 +1461,8 @@ async function openTaskForm(existingTask, splitContext) {
     }, {
       name: result.name,
       description: result.description,
-      dueTime: result.dueTime,
+      dueTime,
+      allDay,
       frequency,
       endDate,
       groupIds: result.groupIds,
@@ -1454,7 +1471,8 @@ async function openTaskForm(existingTask, splitContext) {
     existingTask.name = result.name;
     existingTask.description = result.description;
     existingTask.dueDate = result.dueDate;
-    existingTask.dueTime = result.dueTime;
+    existingTask.dueTime = dueTime;
+    existingTask.allDay = allDay;
     existingTask.frequency = frequency;
     existingTask.endDate = endDate;
     existingTask.groupIds = result.groupIds;
@@ -1464,7 +1482,8 @@ async function openTaskForm(existingTask, splitContext) {
       name: result.name,
       description: result.description,
       dueDate: result.dueDate,
-      dueTime: result.dueTime,
+      dueTime,
+      allDay,
       endDate,
       frequency,
       groupIds: result.groupIds,
@@ -1516,6 +1535,7 @@ function applySplitEdit(originalTask, { originalOccurrenceDate, newOccurrenceDat
       description: edited.description,
       dueDate: newOccurrenceDate,
       dueTime: edited.dueTime,
+      allDay: edited.allDay,
       frequency: { type: 'once', interval: 1 },
       endDate: null,
       groupIds: edited.groupIds,
@@ -1529,6 +1549,7 @@ function applySplitEdit(originalTask, { originalOccurrenceDate, newOccurrenceDat
         description: originalTask.description,
         dueDate: nextDate,
         dueTime: originalTask.dueTime,
+        allDay: originalTask.allDay,
         frequency: originalTask.frequency,
         endDate: originalEndDate,
         groupIds: originalTask.groupIds,
@@ -1542,6 +1563,7 @@ function applySplitEdit(originalTask, { originalOccurrenceDate, newOccurrenceDat
       description: edited.description,
       dueDate: newOccurrenceDate,
       dueTime: edited.dueTime,
+      allDay: edited.allDay,
       frequency: edited.frequency,
       endDate: edited.endDate,
       groupIds: edited.groupIds,
@@ -1909,17 +1931,22 @@ function renderTodo() {
     header.textContent = describeDayLabel(dateISO, todayISO);
     todoListEl.appendChild(header);
 
-    // Within a day, earliest due time first; ties broken alphabetically by
-    // name ("HH:MM" strings compare correctly as plain strings).
+    // Within a day: all-day tasks first (they have no due time to sort by),
+    // then earliest due time first, ties broken alphabetically by name
+    // ("HH:MM" strings compare correctly as plain strings).
     const dayItems = itemsByDate.get(dateISO).sort((a, b) => {
-      if (a.task.dueTime !== b.task.dueTime) return a.task.dueTime < b.task.dueTime ? -1 : 1;
+      if (!!a.task.allDay !== !!b.task.allDay) return a.task.allDay ? -1 : 1;
+      if (!a.task.allDay && a.task.dueTime !== b.task.dueTime) return a.task.dueTime < b.task.dueTime ? -1 : 1;
       return a.task.name.localeCompare(b.task.name, undefined, { sensitivity: 'base' });
     });
 
     for (const item of dayItems) {
       const row = document.createElement('div');
       row.className =
-        'todo-item' + (item.completed ? ' completed' : '') + (item.task.id === activeTaskId ? ' active' : '');
+        'todo-item' +
+        (item.completed ? ' completed' : '') +
+        (item.task.id === activeTaskId ? ' active' : '') +
+        (item.task.allDay ? ' all-day' : '');
 
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -1948,8 +1975,13 @@ function renderTodo() {
 
       const meta = document.createElement('div');
       meta.className = 'todo-item-meta' + (item.overdue && !item.completed ? ' overdue' : '');
-      meta.textContent =
-        item.kind === 'tomorrow'
+      meta.textContent = item.task.allDay
+        ? item.kind === 'tomorrow'
+          ? 'Tomorrow, all day'
+          : item.overdue && !item.completed
+            ? `Overdue since ${item.occurrenceDate}`
+            : 'All day'
+        : item.kind === 'tomorrow'
           ? `Tomorrow, ${item.task.dueTime}`
           : item.overdue && !item.completed
             ? `Overdue since ${item.occurrenceDate} ${item.task.dueTime}`

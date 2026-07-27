@@ -217,6 +217,8 @@ main {
 }
 .todo-item-meta.overdue { color: #f28b82; }
 
+.todo-item.all-day .todo-item-name { color: #8ab4f8; }
+
 .todo-focus-btn {
   flex: none;
   align-self: center;
