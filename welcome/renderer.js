@@ -124,20 +124,54 @@ const modalFields = modalOverlay.querySelector('.modal-fields');
 const modalOk = modalOverlay.querySelector('.modal-ok');
 const modalCancel = modalOverlay.querySelector('.modal-cancel');
 
+// Resolved instead of a values object when the modal's delete button (see
+// opts.deleteLabel below) is confirmed -- a dedicated Symbol so it can never
+// collide with a legitimate field-values result.
+const MODAL_DELETE_RESULT = Symbol('modal-delete');
+
 // fields: [{ name, label, value, placeholder, required }] for text/date/time
 // fields (type defaults to 'text', also accepts 'date'/'time'/'textarea'),
 // [{ name, label, type: 'select', options: [{value, label}], value }] for a
 // select, or [{ name, label, type: 'checkboxes', options: [{value, label}],
 // value: string[] }] for a multi-select (resolves to an array). Fields
 // default to required (non-empty / non-empty-array); pass required: false to
-// allow blank. Resolves { [field.name]: value } on OK, or null on
-// Cancel/Escape. opts.okLabel/cancelLabel override the button text.
+// allow blank. Resolves { [field.name]: value } on OK, MODAL_DELETE_RESULT if
+// opts.deleteLabel is set and its two-click arm/confirm is completed, or null
+// on Cancel/Escape. opts.okLabel/cancelLabel override the button text.
 function showFormModal(title, fields, opts = {}) {
   return new Promise((resolve) => {
     modalTitle.textContent = title;
     modalFields.innerHTML = '';
     modalOk.textContent = opts.okLabel || 'OK';
     modalCancel.textContent = opts.cancelLabel || 'Cancel';
+
+    // The overlay's DOM (including .modal-actions) is reused across every
+    // showFormModal() call in the app, so any delete button from a previous
+    // call must be torn down before conditionally adding a fresh one here.
+    const staleDeleteBtn = modalOverlay.querySelector('.modal-delete');
+    if (staleDeleteBtn) staleDeleteBtn.remove();
+    if (opts.deleteLabel) {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'modal-delete';
+      deleteBtn.textContent = opts.deleteLabel;
+      let deleteArmed = false;
+      deleteBtn.onclick = () => {
+        if (!deleteArmed) {
+          deleteArmed = true;
+          deleteBtn.textContent = 'Click again to delete';
+          deleteBtn.classList.add('confirm');
+          return;
+        }
+        finish(MODAL_DELETE_RESULT);
+      };
+      deleteBtn.addEventListener('mouseleave', () => {
+        if (!deleteArmed) return;
+        deleteArmed = false;
+        deleteBtn.textContent = opts.deleteLabel;
+        deleteBtn.classList.remove('confirm');
+      });
+      modalCancel.parentElement.insertBefore(deleteBtn, modalCancel);
+    }
 
     const interactiveEls = [];
     const fieldGetters = fields.map((field) => {
@@ -1455,8 +1489,24 @@ async function openTaskForm(existingTask, splitContext) {
         required: false,
       },
     ],
-    { okLabel: existingTask ? 'Save' : 'Add' }
+    { okLabel: existingTask ? 'Save' : 'Add', deleteLabel: existingTask ? 'Delete' : undefined }
   );
+
+  if (result === MODAL_DELETE_RESULT) {
+    // Editing "all occurrences" has no splitContext (see the double-click
+    // handler below and the manage list's own edit button) and deletes the
+    // whole task. Editing a single occurrence or "this and following"
+    // instead deletes only that slice of the series, per applySplitDelete.
+    if (!splitContext) {
+      deleteTask(existingTask.id);
+    } else {
+      applySplitDelete(existingTask, splitContext.occurrenceDate, splitContext.scope);
+      saveTasks();
+      renderTodo();
+      renderTodoManageList();
+    }
+    return;
+  }
   if (!result) return;
 
   const endDate = result.endDate || null;
@@ -1614,6 +1664,45 @@ function applySplitEdit(originalTask, { originalOccurrenceDate, newOccurrenceDat
   }
 }
 
+// Deletes a recurring task around occurrenceDate, same split point as
+// applySplitEdit but with no edited replacement -- just removing what scope
+// says to remove:
+//  - 'instance': only this occurrence is gone. The series continues
+//    afterward under its original settings, same as if this occurrence had
+//    simply never existed.
+//  - 'following': this occurrence and everything after it is gone. No
+//    continuation task -- there's nothing left of the series past this
+//    point.
+function applySplitDelete(originalTask, occurrenceDate, scope) {
+  const originalCompletions = originalTask.completions || {};
+  const originalEndDate = originalTask.endDate || null;
+  const prevDate = Recurrence.previousOccurrenceBefore(originalTask, occurrenceDate);
+  const nextDate = Recurrence.nextOccurrenceAfter(originalTask, occurrenceDate);
+
+  if (prevDate) {
+    originalTask.endDate = prevDate; // truncate the historical portion to end right before this occurrence
+    markPastOccurrencesDone(originalTask, Recurrence.dateToISO(new Date()));
+  } else {
+    tasks = tasks.filter((t) => t.id !== originalTask.id); // this was the series' very first occurrence -- nothing historical to keep
+  }
+
+  if (scope === 'instance' && nextDate) {
+    tasks.push({
+      id: uid(),
+      name: originalTask.name,
+      description: originalTask.description,
+      dueDate: nextDate,
+      dueTime: originalTask.dueTime,
+      allDay: originalTask.allDay,
+      passive: originalTask.passive,
+      frequency: originalTask.frequency,
+      endDate: originalEndDate,
+      groupIds: originalTask.groupIds,
+      completions: { ...originalCompletions },
+    });
+  }
+}
+
 // Marks every occurrence of task strictly before todayISO as complete --
 // used right after truncating a split-off historical task to a fixed end
 // date, so it doesn't linger as an incomplete "carried over" item forever.
@@ -1735,14 +1824,16 @@ function computeTodoDisplayItems() {
     const recentDate = Recurrence.mostRecentOccurrenceOnOrBefore(task, todayISO);
     if (recentDate) {
       const completed = !!task.completions[recentDate];
+      const kind = recentDate === todayISO ? 'today' : 'carried-over';
+      // A completed carried-over occurrence has nothing left to do or show
+      // for -- unlike today's, which still shows crossed out for the rest
+      // of the day, an already-finished PAST occurrence would otherwise
+      // linger here forever once the series has moved on (e.g. right after
+      // a split-edit/delete truncates a task's endDate to yesterday, with
+      // that last occurrence marked done by markPastOccurrencesDone).
+      if (kind === 'carried-over' && completed) continue;
       const overdue = !completed && Recurrence.isOverdue(task, recentDate, now);
-      items.push({
-        task,
-        occurrenceDate: recentDate,
-        completed,
-        overdue,
-        kind: recentDate === todayISO ? 'today' : 'carried-over',
-      });
+      items.push({ task, occurrenceDate: recentDate, completed, overdue, kind });
     }
   }
 

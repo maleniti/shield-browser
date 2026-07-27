@@ -1180,6 +1180,19 @@ option {
 }
 .modal-ok:hover { background: #aecbfa; transform: translateY(-1px); }
 
+/* margin-right: auto pushes Cancel/OK to the far right, keeping this
+   separated from them so it can't be clicked by accident. */
+.modal-delete {
+  margin-right: auto;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f28b82;
+}
+.modal-delete:hover { background: rgba(217, 48, 37, 0.15); }
+.modal-delete.confirm {
+  background: #d93025;
+  color: #fff;
+}
+
 /* Shrinks the fixed-size chrome (search bar, group cards) on shorter
    windows/screens, leaving more of the fixed viewport height for the to-do
    list -- everything above still needs to fit without the page scrolling
