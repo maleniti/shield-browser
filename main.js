@@ -285,6 +285,18 @@ function installNetworkBlocking(sess, { enforceWhitelist }) {
     if (consumeExplicitNavigation(details)) return allow(details, targetHostname, callback);
 
     if (requestingHostname && siteLists.isSameSite(requestingHostname, targetHostname)) {
+      // A same-site MAIN FRAME hop (e.g. ynab.com redirecting to
+      // www.ynab.com) is allowed here via the live request chain, but that
+      // trust used to be scoped to just this one chain -- reloading,
+      // toggling the JS/cookies shield (which recreates the BrowserView and
+      // reloads the *current*, already-redirected URL, with no prior
+      // chain), or relaunching the app would land directly on the
+      // redirected-to hostname and get blocked as "not whitelisted" despite
+      // the original site being trusted. Persist the redirect target too,
+      // once, so revisiting it standalone keeps working.
+      if (details.resourceType === 'mainFrame' && siteLists.isWhitelisted(requestingHostname)) {
+        siteLists.addToWhitelist(targetHostname);
+      }
       return allow(details, targetHostname, callback); // first-party resource, no gating needed
     }
 
@@ -294,7 +306,12 @@ function installNetworkBlocking(sess, { enforceWhitelist }) {
     }
     if (siteLists.isWhitelisted(targetHostname)) return allow(details, targetHostname, callback);
 
-    if (requestingHostname && siteLists.isLinkHost(requestingHostname)) {
+    // Same-site (not exact-hostname) comparison -- a link host's own site
+    // can redirect internally to a different subdomain on the way to
+    // rendering (e.g. duckduckgo.com search queries land on
+    // html.duckduckgo.com), and that's still clearly the same trusted site
+    // asking, not a different one.
+    if (requestingHostname && siteLists.isSameSiteAsAnyLinkHost(requestingHostname)) {
       requestAccessDecision(requestingHostname, targetHostname).then((allowed) => {
         if (allowed) {
           rememberMainFrameHop(details, targetHostname);

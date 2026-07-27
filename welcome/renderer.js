@@ -15,10 +15,22 @@ function loadGroups() {
 }
 
 let groups = loadGroups();
-syncLinkHostsOnly(); // report the current link hosts to main.js on every fresh load, not just edits
+// The initial sync happens once the search engine section below sets up
+// (applySearchEngine's own call to this), not here -- this function also
+// needs the currently-selected search engine's hostname (declared further
+// down), which isn't initialized yet this early in the script.
 
+// A search engine is used the same way a link host's site is: the user
+// deliberately navigates there (a query) and then clicks through to
+// whatever result they choose, exactly like clicking a shortcut on this
+// page. Without this, every search-result click was silently auto-denied
+// (the results page is never itself one of the user's own links), forcing
+// a manual whitelist visit first for anything found via search.
 function syncLinkHostsOnly() {
   const hostnames = groups.flatMap((g) => g.sites.map((s) => hostnameOf(s.url))).filter(Boolean);
+  const searchEngine = SEARCH_ENGINES[currentSearchEngineId];
+  const searchEngineHostname = searchEngine && hostnameOf(searchEngine.action);
+  if (searchEngineHostname) hostnames.push(searchEngineHostname);
   window.siteListAPI.syncLinkHosts(hostnames);
 }
 
@@ -868,6 +880,10 @@ const SEARCH_ENGINES = {
   ecosia: { label: 'Ecosia', action: 'https://www.ecosia.org/search', param: 'q' },
   brave: { label: 'Brave Search', action: 'https://search.brave.com/search', param: 'q' },
 };
+// Read by syncLinkHostsOnly (defined much earlier in this file) -- only the
+// currently-selected engine counts as a link host, not every engine this
+// app happens to support.
+let currentSearchEngineId = 'duckduckgo';
 
 const searchForm = document.getElementById('search-form');
 const searchInput = document.getElementById('search-input');
@@ -881,11 +897,13 @@ for (const [id, engine] of Object.entries(SEARCH_ENGINES)) {
 }
 
 function applySearchEngine(id) {
-  const engine = SEARCH_ENGINES[id] || SEARCH_ENGINES.duckduckgo;
+  currentSearchEngineId = SEARCH_ENGINES[id] ? id : 'duckduckgo';
+  const engine = SEARCH_ENGINES[currentSearchEngineId];
   searchForm.action = engine.action;
   searchInput.name = engine.param;
   searchInput.placeholder = 'Search ' + engine.label;
-  searchEngineSelect.value = SEARCH_ENGINES[id] ? id : 'duckduckgo';
+  searchEngineSelect.value = currentSearchEngineId;
+  syncLinkHostsOnly(); // covers both the initial sync on load and every later engine change
 }
 
 applySearchEngine(localStorage.getItem(SEARCH_ENGINE_STORAGE_KEY) || 'duckduckgo');
