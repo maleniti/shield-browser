@@ -1266,7 +1266,8 @@ function describeTaskSchedule(task) {
     label = '';
   }
   const scheduleBase = `${task.dueDate} ${task.allDay ? 'all day' : task.dueTime} · ${label}`;
-  return task.endDate ? `${scheduleBase} until ${task.endDate}` : scheduleBase;
+  const withEnd = task.endDate ? `${scheduleBase} until ${task.endDate}` : scheduleBase;
+  return task.passive ? `${withEnd} · Passive (blocks)` : withEnd;
 }
 
 const FREQUENCY_OPTIONS = [
@@ -1432,8 +1433,22 @@ async function openTaskForm(existingTask, splitContext) {
         required: false,
       },
       {
+        name: 'passive',
+        label: '',
+        type: 'checkboxes',
+        value: existingTask && existingTask.passive ? ['passive'] : [],
+        options: [
+          {
+            value: 'passive',
+            label:
+              "Passive task -- abstinence: blocks its site groups instead of requiring them. Can't be focused, checked off, or become overdue; it's done automatically once its due time (or day, if all-day) passes.",
+          },
+        ],
+        required: false,
+      },
+      {
         name: 'groupIds',
-        label: 'Sites needed for this task',
+        label: 'Site groups (required for active tasks, blocked for passive tasks)',
         type: 'checkboxes',
         value: existingTask ? existingTask.groupIds : [],
         options: groupOptions,
@@ -1452,7 +1467,25 @@ async function openTaskForm(existingTask, splitContext) {
 
   const allDay = result.allDay.length > 0;
   const dueTime = allDay ? null : result.dueTime;
+  const passive = result.passive.length > 0;
   const frequency = decodeFrequency(result.frequencyType, result.interval, result);
+
+  // A heads-up, not a hard block -- saving proceeds either way (see
+  // findPassiveConflict/buildPassiveItem: the passive task just stays
+  // suspended, crossed out, until the conflict resolves on its own). Only
+  // worth checking if this task would actually be in effect today; a future
+  // due date has nothing "live" to conflict with yet.
+  if (passive && Recurrence.occursOn({ dueDate: result.dueDate, endDate, frequency }, Recurrence.dateToISO(new Date()))) {
+    const conflict = findPassiveConflict({ groupIds: result.groupIds }, existingTask ? existingTask.id : null);
+    if (conflict) {
+      alert(
+        `This passive task conflicts with "${conflict.name}", which currently needs one of the same site groups. ` +
+          `It'll be saved, but stays paused (crossed out, not blocking) until "${conflict.name}" is completed, ` +
+          `rescheduled, or you set this passive task's own time to avoid the overlap.`
+      );
+    }
+  }
+
   if (splitContext) {
     applySplitEdit(existingTask, {
       originalOccurrenceDate: splitContext.occurrenceDate,
@@ -1463,6 +1496,7 @@ async function openTaskForm(existingTask, splitContext) {
       description: result.description,
       dueTime,
       allDay,
+      passive,
       frequency,
       endDate,
       groupIds: result.groupIds,
@@ -1473,6 +1507,7 @@ async function openTaskForm(existingTask, splitContext) {
     existingTask.dueDate = result.dueDate;
     existingTask.dueTime = dueTime;
     existingTask.allDay = allDay;
+    existingTask.passive = passive;
     existingTask.frequency = frequency;
     existingTask.endDate = endDate;
     existingTask.groupIds = result.groupIds;
@@ -1484,6 +1519,7 @@ async function openTaskForm(existingTask, splitContext) {
       dueDate: result.dueDate,
       dueTime,
       allDay,
+      passive,
       endDate,
       frequency,
       groupIds: result.groupIds,
@@ -1536,6 +1572,7 @@ function applySplitEdit(originalTask, { originalOccurrenceDate, newOccurrenceDat
       dueDate: newOccurrenceDate,
       dueTime: edited.dueTime,
       allDay: edited.allDay,
+      passive: edited.passive,
       frequency: { type: 'once', interval: 1 },
       endDate: null,
       groupIds: edited.groupIds,
@@ -1550,6 +1587,7 @@ function applySplitEdit(originalTask, { originalOccurrenceDate, newOccurrenceDat
         dueDate: nextDate,
         dueTime: originalTask.dueTime,
         allDay: originalTask.allDay,
+        passive: originalTask.passive,
         frequency: originalTask.frequency,
         endDate: originalEndDate,
         groupIds: originalTask.groupIds,
@@ -1564,6 +1602,7 @@ function applySplitEdit(originalTask, { originalOccurrenceDate, newOccurrenceDat
       dueDate: newOccurrenceDate,
       dueTime: edited.dueTime,
       allDay: edited.allDay,
+      passive: edited.passive,
       frequency: edited.frequency,
       endDate: edited.endDate,
       groupIds: edited.groupIds,
@@ -1636,16 +1675,63 @@ function toggleTaskCompletion(task, occurrenceDate) {
   renderTodo();
 }
 
+// A passive task blocks its groups' sites instead of needing them -- if an
+// active (non-passive) task's currently-pending occurrence needs one of the
+// same sites, blocking them would fight that active task, so the passive
+// task stays suspended (returns that conflicting task) until it's resolved.
+// taskLike only needs a groupIds array, not a full task -- used both for an
+// existing passive task (checking today's live state) and for a form's
+// about-to-be-saved values (checking before it even exists as a task yet).
+// excludeTaskId skips comparing a task being edited against its own
+// not-yet-saved prior state.
+function findPassiveConflict(taskLike, excludeTaskId) {
+  const todayISO = Recurrence.dateToISO(new Date());
+  const blockedHostnames = taskAllowedHostnames(taskLike);
+  for (const other of tasks) {
+    if (other.passive || other.id === excludeTaskId) continue;
+    if (!taskAllowedHostnames(other).some((h) => blockedHostnames.includes(h))) continue;
+    const recentDate = Recurrence.mostRecentOccurrenceOnOrBefore(other, todayISO);
+    if (recentDate && !other.completions[recentDate]) return other;
+  }
+  return null;
+}
+
+// A passive task never carries over or becomes overdue -- it's either in
+// effect today or it isn't. "completed" (crossed out, not actually
+// blocking) covers two different reasons: its window for the day already
+// ended (auto-completes at its due time, or midnight if all-day), or an
+// active task's conflicting need suspends it -- once that conflict clears,
+// it resumes blocking (unless its own window has since ended anyway).
+function buildPassiveItem(task, occurrenceDate, now) {
+  const timeEnded = Recurrence.hasOccurrenceEnded(task, occurrenceDate, now);
+  const conflict = timeEnded ? null : findPassiveConflict(task, task.id);
+  return {
+    task,
+    occurrenceDate,
+    completed: timeEnded || !!conflict,
+    overdue: false,
+    kind: 'today',
+    passiveConflict: conflict,
+  };
+}
+
 // One item per task: its most recent due-or-earlier occurrence (carried
 // forward if still incomplete, so a missed day doesn't just vanish), plus --
 // after 6pm local time -- a preview item for tomorrow's occurrence if it has
-// one, shown regardless of today's status.
+// one, shown regardless of today's status. Passive tasks are the exception:
+// they only ever show for today (see buildPassiveItem), never carried over
+// or previewed for tomorrow -- there's no "missed" passive occurrence to
+// carry, and a conflict check only makes sense against today's live state.
 function computeTodoDisplayItems() {
   const now = new Date();
   const todayISO = Recurrence.dateToISO(now);
   const items = [];
 
   for (const task of tasks) {
+    if (task.passive) {
+      if (Recurrence.occursOn(task, todayISO)) items.push(buildPassiveItem(task, todayISO, now));
+      continue;
+    }
     const recentDate = Recurrence.mostRecentOccurrenceOnOrBefore(task, todayISO);
     if (recentDate) {
       const completed = !!task.completions[recentDate];
@@ -1663,6 +1749,7 @@ function computeTodoDisplayItems() {
   if (now.getHours() >= 18) {
     const tomorrowISO = Recurrence.dateToISO(Recurrence.addDays(now, 1));
     for (const task of tasks) {
+      if (task.passive) continue;
       if (Recurrence.occursOn(task, tomorrowISO)) {
         items.push({ task, occurrenceDate: tomorrowISO, completed: false, overdue: false, kind: 'tomorrow' });
       }
@@ -1687,6 +1774,7 @@ function computeNextRecurrenceItems() {
   const items = [];
 
   for (const task of tasks) {
+    if (task.passive) continue; // handled separately below -- no carry-over/completions map to consult
     const recentDate = Recurrence.mostRecentOccurrenceOnOrBefore(task, todayISO);
     if (recentDate && !task.completions[recentDate]) {
       items.push({
@@ -1721,10 +1809,40 @@ function computeNextRecurrenceItems() {
 
   if (now.getHours() >= 18) {
     for (const task of tasks) {
+      if (task.passive) continue;
       const alreadyShown = items.some((i) => i.task.id === task.id && i.occurrenceDate === tomorrowISO);
       if (!alreadyShown && Recurrence.occursOn(task, tomorrowISO)) {
         items.push({ task, occurrenceDate: tomorrowISO, completed: false, overdue: false, kind: 'tomorrow' });
       }
+    }
+  }
+
+  // Passive tasks: today's occurrence if it has one (crossed out once its
+  // window for the day has ended -- no conflict-suspension here, that's
+  // only meaningful for the live "pending" view/actual blocking, not this
+  // preview), otherwise its next occurrence -- mirroring how an active
+  // task's "next" shows once today's is done.
+  for (const task of tasks) {
+    if (!task.passive) continue;
+    const occursToday = Recurrence.occursOn(task, todayISO);
+    const timeEnded = occursToday && Recurrence.hasOccurrenceEnded(task, todayISO, now);
+
+    if (occursToday && !timeEnded) {
+      items.push({ task, occurrenceDate: todayISO, completed: false, overdue: false, kind: 'today' });
+      continue;
+    }
+    if (occursToday) {
+      items.push({ task, occurrenceDate: todayISO, completed: true, overdue: false, kind: 'today' });
+    }
+    const nextDate = Recurrence.nextOccurrenceAfter(task, todayISO);
+    if (nextDate) {
+      items.push({
+        task,
+        occurrenceDate: nextDate,
+        completed: false,
+        overdue: false,
+        kind: nextDate === tomorrowISO ? 'tomorrow' : 'upcoming',
+      });
     }
   }
 
@@ -1777,6 +1895,19 @@ function updateFocusMode(pendingOverdue) {
   // blocklists/blockedPage.js's focus-mode vs focus-mode-voluntary reasons.
   const reason = pendingOverdue.some((item) => item.task.id === activeTaskId) ? 'overdue' : 'voluntary';
   window.siteListAPI.setFocusMode(activeTask ? taskAllowedHostnames(activeTask) : [], reason);
+}
+
+// Mirrors which sites passive ("abstinence") tasks are currently blocking to
+// main.js -- always computed from the "pending" view directly (like
+// hasOverdueIncompleteTask() above), regardless of which view the to-do list
+// happens to be displaying -- actual enforcement isn't a display preference,
+// and only computeTodoDisplayItems() applies conflict-suspension per
+// occurrence (see buildPassiveItem).
+function updatePassiveBlocking() {
+  const hostnames = computeTodoDisplayItems()
+    .filter((item) => item.task.passive && !item.completed)
+    .flatMap((item) => taskAllowedHostnames(item.task));
+  window.siteListAPI.setPassiveBlockedHosts(hostnames);
 }
 
 const todoSectionEl = document.getElementById('todo-section');
@@ -1879,6 +2010,7 @@ function renderTodo() {
     todoSectionEl.classList.remove('hidden');
     renderTodoEmptyState();
     updateFocusMode([]);
+    updatePassiveBlocking();
     updateTodoScrollButtons();
     return;
   }
@@ -1895,7 +2027,10 @@ function renderTodo() {
   // Eligible to be (or stay) the focused task: today's occurrence (whether
   // overdue yet or not -- the Focus button lets the user opt into any of
   // today's tasks, not just overdue ones) or a carried-over overdue one.
-  const focusEligible = items.filter((item) => (item.kind === 'today' || item.kind === 'carried-over') && !item.completed);
+  // Passive tasks are never eligible -- they can't be focused on.
+  const focusEligible = items.filter(
+    (item) => !item.task.passive && (item.kind === 'today' || item.kind === 'carried-over') && !item.completed
+  );
 
   // A lone overdue CARRIED-OVER task is auto-selected, same as always -- no
   // ambiguity, and (unlike today's tasks) it has no Focus button of its own
@@ -1946,12 +2081,15 @@ function renderTodo() {
         'todo-item' +
         (item.completed ? ' completed' : '') +
         (item.task.id === activeTaskId ? ' active' : '') +
-        (item.task.allDay ? ' all-day' : '');
+        (item.task.allDay ? ' all-day' : '') +
+        (item.task.passive ? ' passive' : '');
 
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = item.completed;
-      checkbox.disabled = item.kind === 'tomorrow' || item.kind === 'upcoming';
+      // Passive tasks are never user-toggleable -- they auto-complete on
+      // their own (see buildPassiveItem), the checkbox just reflects that.
+      checkbox.disabled = item.kind === 'tomorrow' || item.kind === 'upcoming' || item.task.passive;
       checkbox.onclick = (e) => {
         e.stopPropagation();
         toggleTaskCompletion(item.task, item.occurrenceDate);
@@ -1975,17 +2113,33 @@ function renderTodo() {
 
       const meta = document.createElement('div');
       meta.className = 'todo-item-meta' + (item.overdue && !item.completed ? ' overdue' : '');
-      meta.textContent = item.task.allDay
-        ? item.kind === 'tomorrow'
-          ? 'Tomorrow, all day'
-          : item.overdue && !item.completed
-            ? `Overdue since ${item.occurrenceDate}`
-            : 'All day'
-        : item.kind === 'tomorrow'
-          ? `Tomorrow, ${item.task.dueTime}`
-          : item.overdue && !item.completed
-            ? `Overdue since ${item.occurrenceDate} ${item.task.dueTime}`
-            : `Due ${item.task.dueTime}`;
+      if (item.task.passive) {
+        // "Ends"/"Ends at", not "Blocking" -- a passive task doesn't
+        // necessarily block anything (it can be a plain abstinence
+        // reminder with no linked groups), so the label shouldn't presume
+        // it does.
+        meta.textContent = item.passiveConflict
+          ? `Paused -- conflicts with "${item.passiveConflict.name}"`
+          : item.kind === 'tomorrow'
+            ? 'Ends tomorrow'
+            : item.kind === 'upcoming'
+              ? `Ends ${item.occurrenceDate}`
+              : item.task.allDay
+                ? 'All day'
+                : `Ends at ${item.task.dueTime}`;
+      } else {
+        meta.textContent = item.task.allDay
+          ? item.kind === 'tomorrow'
+            ? 'Tomorrow, all day'
+            : item.overdue && !item.completed
+              ? `Overdue since ${item.occurrenceDate}`
+              : 'All day'
+          : item.kind === 'tomorrow'
+            ? `Tomorrow, ${item.task.dueTime}`
+            : item.overdue && !item.completed
+              ? `Overdue since ${item.occurrenceDate} ${item.task.dueTime}`
+              : `Due ${item.task.dueTime}`;
+      }
       text.appendChild(meta);
 
       row.appendChild(text);
@@ -2006,7 +2160,8 @@ function renderTodo() {
       // active before. Scoped to today's tasks only: a carried-over
       // (already-past) task has no button here and keeps the older,
       // non-escapable auto-focus behavior when it's the sole overdue task.
-      if (item.kind === 'today' && !item.completed) {
+      // Passive tasks never get one -- they can't be focused on.
+      if (item.kind === 'today' && !item.completed && !item.task.passive) {
         const isFocused = item.task.id === activeTaskId;
         const focusBtn = document.createElement('button');
         focusBtn.className = 'todo-focus-btn' + (isFocused ? ' active' : '');
@@ -2045,6 +2200,7 @@ function renderTodo() {
   }
 
   updateFocusMode(pendingOverdue);
+  updatePassiveBlocking();
   updateTodoScrollButtons();
 }
 
@@ -2057,6 +2213,10 @@ const todoManageViewToggleBtn = document.getElementById('todo-manage-view-toggle
 // come of it, so "active only" hides it to declutter a long-lived list.
 function isTaskDoneAndEnded(task, todayISO) {
   if (!task.endDate || task.endDate >= todayISO) return false;
+  // Passive tasks auto-complete every occurrence rather than writing to
+  // completions (see buildPassiveItem) -- once its series has ended, there's
+  // nothing left pending to check for.
+  if (task.passive) return true;
   const lastOccurrence = Recurrence.mostRecentOccurrenceOnOrBefore(task, todayISO);
   return !!lastOccurrence && !!task.completions[lastOccurrence];
 }
@@ -2113,7 +2273,7 @@ function renderTodoManageList() {
     const info = document.createElement('div');
     info.className = 'todo-manage-item-info';
     const name = document.createElement('div');
-    name.className = 'todo-manage-item-name';
+    name.className = 'todo-manage-item-name' + (task.passive ? ' passive' : '');
     name.textContent = task.name;
     info.appendChild(name);
     const meta = document.createElement('div');

@@ -20,6 +20,9 @@ const REASONS = {
   'focus-mode-voluntary': (host) => `<code>${host}</code> is blocked because you're focused on a to-do task
     that doesn't need it. Only sites needed for that task are reachable until it's marked done or you
     turn off focus for it -- check the to-do list on the welcome page.`,
+  'passive-task': (host) => `<code>${host}</code> is blocked because you're abstaining from it today as part
+    of a passive to-do task. It'll be reachable again once that task's window ends for the day -- check the
+    to-do list on the welcome page.`,
 };
 
 function renderBlockedPage(hostname, reason = 'social') {

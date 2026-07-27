@@ -180,6 +180,23 @@ function setFocusModeHosts(hostnames, reason) {
   focusModeReason = reason;
 }
 
+// Set by the welcome page (via IPC) based on currently-active, non-conflicting
+// passive ("abstinence") to-do tasks -- these hostnames (and same-site
+// resources) are blocked unconditionally, layered similarly to the always-on
+// ad/social blocklist below rather than narrowing the whitelist like focus
+// mode does. Conflict resolution against active tasks needing the same
+// groups happens entirely in welcome/renderer.js before this is set; main.js
+// just enforces whatever hostname list it's given.
+let passiveBlockedHosts = [];
+
+function setPassiveBlockedHosts(hostnames) {
+  passiveBlockedHosts = hostnames;
+}
+
+function isPassivelyBlocked(hostname) {
+  return !!hostname && passiveBlockedHosts.some((h) => h === hostname || siteLists.isSameSite(h, hostname));
+}
+
 function isTaskSite(hostname) {
   return !!hostname && focusModeHosts.some((h) => h === hostname || siteLists.isSameSite(h, hostname));
 }
@@ -248,6 +265,11 @@ function installNetworkBlocking(sess, { enforceWhitelist }) {
     // reject that load too (no hostname => not in the allow-list), triggering
     // showBlockedPage again, which loads another data: URL, forever.
     if (!targetHostname) return allow(details, targetHostname, callback);
+
+    if (isPassivelyBlocked(targetHostname)) {
+      if (details.resourceType === 'mainFrame') showBlockedPage(details, targetHostname, 'passive-task');
+      return callback({ cancel: true });
+    }
 
     const requestingHostname = getRequestingHostname(details);
 
@@ -648,6 +670,7 @@ ipcMain.handle('get-site-lists', () => ({
 ipcMain.on('remove-from-whitelist', (_e, hostname) => siteLists.removeFromWhitelist(hostname));
 ipcMain.on('remove-from-blacklist', (_e, hostname) => siteLists.removeFromBlacklist(hostname));
 ipcMain.on('set-focus-mode', (_e, hostnames, reason) => setFocusModeHosts(hostnames, reason));
+ipcMain.on('set-passive-blocked-hosts', (_e, hostnames) => setPassiveBlockedHosts(hostnames));
 
 // Custom titlebar buttons, standing in for the OS ones removed by frame: false.
 ipcMain.on('window-minimize', () => mainWindow.minimize());

@@ -175,21 +175,30 @@ function previousOccurrenceBefore(task, dateISO) {
   return mostRecentOccurrenceOnOrBefore(task, dayBefore);
 }
 
-// An all-day task has no dueTime -- falling back to 23:59 already gives the
-// right "overdue only once the day itself has passed" behavior on its own.
-// The one exception is a daily-recurring (every 1 day) all-day task: that's
-// not a string of independent daily occurrences, it's one continuous task
-// spanning from its due date to its end date (e.g. "multi-day project"), so
-// it's only overdue once truly past that end date -- or never, if there
-// isn't one.
-function isOverdue(task, occurrenceDateISO, now) {
-  if (task.allDay && task.frequency.type === 'days' && (task.frequency.interval || 1) === 1) {
-    return !!task.endDate && dateToISO(now) > task.endDate;
-  }
+// Whether occurrenceDateISO's window -- its due time, or end of day for an
+// all-day task -- has already passed as of `now`. The shared threshold
+// behind isOverdue() below; also used directly by passive tasks, which
+// auto-complete once their window for the day ends rather than ever
+// becoming "overdue".
+function hasOccurrenceEnded(task, occurrenceDateISO, now) {
   const [h, m] = (task.dueTime || '23:59').split(':').map(Number);
   const dueDateTime = new Date(occurrenceDateISO + 'T00:00:00');
   dueDateTime.setHours(h, m, 0, 0);
   return now.getTime() > dueDateTime.getTime();
+}
+
+// An all-day task has no dueTime -- falling back to 23:59 in
+// hasOccurrenceEnded already gives the right "overdue only once the day
+// itself has passed" behavior on its own. The one exception is a
+// daily-recurring (every 1 day) all-day task: that's not a string of
+// independent daily occurrences, it's one continuous task spanning from its
+// due date to its end date (e.g. "multi-day project"), so it's only
+// overdue once truly past that end date -- or never, if there isn't one.
+function isOverdue(task, occurrenceDateISO, now) {
+  if (task.allDay && task.frequency.type === 'days' && (task.frequency.interval || 1) === 1) {
+    return !!task.endDate && dateToISO(now) > task.endDate;
+  }
+  return hasOccurrenceEnded(task, occurrenceDateISO, now);
 }
 
 const api = {
@@ -203,6 +212,7 @@ const api = {
   nextOccurrenceAfter,
   previousOccurrenceBefore,
   isOverdue,
+  hasOccurrenceEnded,
 };
 
 if (typeof module !== 'undefined' && module.exports) {
